@@ -67,6 +67,13 @@ button.leveä { width: 100%; margin-top: .75rem; }
   min-height: 340px;
 }
 .keski-tyhja { color: #3a3228; font-size: .9rem; letter-spacing: .25em; }
+.keski img {
+  max-width: 100%;
+  max-height: 420px;
+  display: block;
+  image-rendering: auto;
+}
+.keski img[hidden] { display: none; }
 
 .ala {
   grid-area: ala;

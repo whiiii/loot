@@ -11,25 +11,30 @@
  *
  * Paita ja tabard puuttuvat tarkoituksella - niita ei tipu raideista.
  */
+/*
+ * Paikkojen nimet ovat englanniksi tarkoituksella. Pelaajat puhuvat
+ * sloteista pelin omilla nimilla, ja suomennos ("Sivukasi") on sekava
+ * vaikka olisi oikein.
+ */
 export const PAIKAT = [
-  { key: "head",     slot: "head",     nimi: "Pää",       puoli: "vasen" },
-  { key: "neck",     slot: "neck",     nimi: "Kaula",     puoli: "vasen" },
-  { key: "shoulder", slot: "shoulder", nimi: "Hartiat",   puoli: "vasen" },
-  { key: "back",     slot: "back",     nimi: "Viitta",    puoli: "vasen" },
-  { key: "chest",    slot: "chest",    nimi: "Rinta",     puoli: "vasen" },
-  { key: "wrist",    slot: "wrist",    nimi: "Ranteet",   puoli: "vasen" },
+  { key: "head",     slot: "head",     nimi: "Head",      puoli: "vasen" },
+  { key: "neck",     slot: "neck",     nimi: "Neck",      puoli: "vasen" },
+  { key: "shoulder", slot: "shoulder", nimi: "Shoulder",  puoli: "vasen" },
+  { key: "back",     slot: "back",     nimi: "Back",      puoli: "vasen" },
+  { key: "chest",    slot: "chest",    nimi: "Chest",     puoli: "vasen" },
+  { key: "wrist",    slot: "wrist",    nimi: "Wrist",     puoli: "vasen" },
 
-  { key: "hands",    slot: "hands",    nimi: "Kädet",     puoli: "oikea" },
-  { key: "waist",    slot: "waist",    nimi: "Vyö",       puoli: "oikea" },
-  { key: "legs",     slot: "legs",     nimi: "Jalat",     puoli: "oikea" },
-  { key: "feet",     slot: "feet",     nimi: "Jalkineet", puoli: "oikea" },
-  { key: "finger1",  slot: "finger",   nimi: "Sormus",    puoli: "oikea" },
-  { key: "finger2",  slot: "finger",   nimi: "Sormus",    puoli: "oikea" },
-  { key: "trinket1", slot: "trinket",  nimi: "Koru",      puoli: "oikea" },
-  { key: "trinket2", slot: "trinket",  nimi: "Koru",      puoli: "oikea" },
+  { key: "hands",    slot: "hands",    nimi: "Hands",     puoli: "oikea" },
+  { key: "waist",    slot: "waist",    nimi: "Waist",     puoli: "oikea" },
+  { key: "legs",     slot: "legs",     nimi: "Legs",      puoli: "oikea" },
+  { key: "feet",     slot: "feet",     nimi: "Feet",      puoli: "oikea" },
+  { key: "finger1",  slot: "finger",   nimi: "Ring",      puoli: "oikea" },
+  { key: "finger2",  slot: "finger",   nimi: "Ring",      puoli: "oikea" },
+  { key: "trinket1", slot: "trinket",  nimi: "Trinket",   puoli: "oikea" },
+  { key: "trinket2", slot: "trinket",  nimi: "Trinket",   puoli: "oikea" },
 
-  { key: "mainhand", slot: "mainhand", nimi: "Pääkäsi",   puoli: "ala" },
-  { key: "offhand",  slot: "offhand",  nimi: "Sivukäsi",  puoli: "ala" },
+  { key: "mainhand", slot: "mainhand", nimi: "Main Hand", puoli: "ala" },
+  { key: "offhand",  slot: "offhand",  nimi: "Off Hand",  puoli: "ala" },
   { key: "ranged",   slot: "ranged",   nimi: "Ranged",    puoli: "ala" },
 ];
 

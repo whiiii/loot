@@ -42,9 +42,9 @@ async function lataa() {
   }
 
   tila.raid = nakymaVastaus.raid;
-  tila.paikat = nakymaVastaus.paikat;
-  tila.items = nakymaVastaus.items;
-  tila.picks = nakymaVastaus.picks;
+  tila.paikat = nakymaVastaus.paikat ?? [];
+  tila.items = nakymaVastaus.items ?? [];
+  tila.picks = nakymaVastaus.picks ?? {};
 
   $("raidi").textContent = tila.raid ? tila.raid.name : "Ei aktiivista raidia";
   piirraPaikat();
@@ -96,8 +96,14 @@ function piirraPaikat() {
  * sen jalkeen, ne jaavat kasittelematta ellei sita pyydeta uudelleen.
  */
 function paivitaWowhead() {
-  if (window.$WowheadPower && typeof window.$WowheadPower.refreshLinks === "function") {
-    window.$WowheadPower.refreshLinks();
+  // Ulkopuolinen skripti ei saa kaataa tallennusta. Jos Wowhead on alhaalla
+  // tai estetty, linkit jaavat pelkiksi id-numeroiksi - se on rumaa mutta
+  // sivusto toimii.
+  try {
+    const wh = window.$WowheadPower;
+    if (wh && typeof wh.refreshLinks === "function") wh.refreshLinks(true);
+  } catch (err) {
+    /* ei mitaan */
   }
 }
 
@@ -184,12 +190,18 @@ async function tallenna(slotKey, itemId) {
     // haetaan uudelleen sen sijaan etta arvattaisiin lopputulos.
     const uusi = await fetch("/api/nakyma").then((r) => r.json());
     if (uusi.ok) {
-      tila.picks = uusi.picks;
+      tila.picks = uusi.picks ?? {};
       piirraPaikat();
     }
     naytaViesti(itemId ? "Tallennettu." : "Valinta poistettu.");
   } catch (err) {
-    naytaViesti("Yhteysvirhe.");
+    // Virheen teksti nakyviin sellaisenaan.
+    //
+    // Tassa luki aiemmin pelkka "Yhteysvirhe", vaikka tallennus oli
+    // mennyt lapi ja vika oli vasta sen jalkeisessa piirrossa. Yleinen
+    // teksti vei tutkimuksen vaaraan suuntaan.
+    naytaViesti("Virhe: " + (err && err.message ? err.message : String(err)));
+    console.error("tallenna():", err);
   }
 }
 
@@ -202,6 +214,16 @@ function naytaViesti(teksti) {
   el.classList.add("nakyy");
   clearTimeout(viestiAjastin);
   viestiAjastin = setTimeout(() => el.classList.remove("nakyy"), 2200);
+}
+
+// Hahmokuva on valinnainen: jos tiedostoa ei ole, naytetaan teksti sen
+// sijaan etta jaisi rikkinainen kuvake.
+const hahmokuva = $("hahmokuva");
+if (hahmokuva) {
+  hahmokuva.addEventListener("error", () => {
+    hahmokuva.hidden = true;
+    $("keski-tyhja").hidden = false;
+  });
 }
 
 $("sulje").addEventListener("click", suljeValitsin);

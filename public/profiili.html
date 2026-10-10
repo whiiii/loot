@@ -11,7 +11,12 @@
 // Wowheadin tooltipit. colorLinks varittaa nimen laadun mukaan,
 // iconizeLinks lisaa ikonin ja renameLinks korvaa linkin tekstin itemin
 // nimella - eli pelkka id riittaa, nimia ei tallenneta kantaan.
-const whTooltips = { colorLinks: true, iconizeLinks: true, renameLinks: true };
+//
+// window.whTooltips eika const: Wowheadin skripti lukee asetukset
+// nimenomaan window-objektista. Tavallisella scriptilla 'const' luo
+// script-tason sidonnan joka ei nay windowissa lainkaan, joten asetukset
+// jaivat lukematta ja linkit kasittelematta.
+window.whTooltips = { colorLinks: true, iconizeLinks: true, renameLinks: true };
 </script>
 <script src="https://wow.zamimg.com/js/tooltips.js"></script>
 </head>
@@ -35,7 +40,8 @@ const whTooltips = { colorLinks: true, iconizeLinks: true, renameLinks: true };
 <main class="hahmo">
   <div class="sarake vasen" id="vasen"></div>
   <div class="keski">
-    <div class="keski-tyhja">Hahmo</div>
+    <img id="hahmokuva" src="/staattinen/hahmo.png" alt="">
+    <div class="keski-tyhja" id="keski-tyhja" hidden>Hahmo</div>
   </div>
   <div class="sarake oikea" id="oikea"></div>
   <div class="ala" id="ala"></div>
