@@ -123,6 +123,46 @@
 }
 .nappi-vaara:hover { background: #2a1512; border-color: #c75c4a; color: #e8a79a; }
 
+/* Luku joka on samalla linkki tarkempaan nakymaan. */
+.nappi-linkki {
+  width: auto;
+  padding: .15rem .35rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--teksti);
+  font: inherit;
+  font-size: .86rem;
+  cursor: pointer;
+}
+.nappi-linkki:hover {
+  border-color: var(--reuna);
+  background: #241e16;
+  color: var(--korostus);
+}
+
+/* Yhden jäsenen valinnat. */
+.valitsin.leveampi { max-width: 440px; }
+
+.valintarivi {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .35rem .4rem;
+  border-bottom: 1px solid rgba(255,255,255,.04);
+}
+
+.valintarivi-paikka {
+  flex: 0 0 92px;
+  font-size: .7rem;
+  color: var(--himmea);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.valintarivi .tyhja-teksti { color: #5d5447; font-size: .82rem; }
+.valintarivi.tyhja { opacity: .65; }
+
 /* Lomake. */
 .lomake {
   display: flex;

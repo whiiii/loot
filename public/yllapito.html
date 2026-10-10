@@ -32,14 +32,16 @@
         <tr>
           <th>Tunnus</th>
           <th>Hahmo</th>
+          <th>Luokka</th>
           <th>Rooli</th>
+          <th>Rank</th>
           <th class="oikealle">Valinnat</th>
           <th>Tila</th>
           <th></th>
         </tr>
       </thead>
       <tbody id="kayttajat">
-        <tr><td colspan="6" class="himmea">Ladataan…</td></tr>
+        <tr><td colspan="8" class="himmea">Ladataan…</td></tr>
       </tbody>
     </table>
   </section>
@@ -53,12 +55,24 @@
                placeholder="kirjautumistunnus">
       </div>
       <div class="kentta">
-        <label for="u-hahmo">Hahmo</label>
-        <input type="text" id="u-hahmo" maxlength="40"
+        <label for="u-etunimi">Etunimi</label>
+        <input type="text" id="u-etunimi" maxlength="40"
                placeholder="sama kuin tunnus">
       </div>
+      <div class="kentta">
+        <label for="u-sukunimi">Sukunimi</label>
+        <input type="text" id="u-sukunimi" maxlength="40" placeholder="valinnainen">
+      </div>
       <div class="kentta kapea">
-        <label for="u-rooli">Rooli</label>
+        <label for="u-luokka">Luokka</label>
+        <select id="u-luokka" class="roolivalinta"></select>
+      </div>
+      <div class="kentta kapea">
+        <label for="u-raidirooli">Rooli</label>
+        <select id="u-raidirooli" class="roolivalinta"></select>
+      </div>
+      <div class="kentta kapea">
+        <label for="u-rooli">Rank</label>
         <select id="u-rooli" class="roolivalinta">
           <option value="social">Social</option>
           <option value="raider" selected>Raider</option>
@@ -90,8 +104,20 @@
 
 </main>
 
+<!-- Yhden jäsenen valinnat -->
+<div class="peite" id="valinnat-peite" hidden>
+  <div class="valitsin leveampi">
+    <div class="valitsin-ylaosa">
+      <strong id="valinnat-otsikko"></strong>
+      <button class="nappi-hillitty" id="valinnat-sulje">Sulje</button>
+    </div>
+    <div class="valitsin-lista" id="valinnat-lista"></div>
+  </div>
+</div>
+
 <div class="viesti" id="viesti"></div>
 
+<script src="/staattinen/hahmotiedot.js"></script>
 <script src="/staattinen/dialogi.js"></script>
 <script src="/staattinen/yllapito.js"></script>
 </body>

@@ -8,7 +8,6 @@
  */
 
 const IKONI = "https://wow.zamimg.com/images/wow/icons/large/";
-const ROOLIT = { social: "Social", raider: "Raider", officer: "Officer" };
 
 let tila = { raid: null, paikat: [], items: [], picks: {}, tiedot: {}, lukittu: false };
 let avoinPaikka = null;
@@ -31,9 +30,19 @@ async function lataa() {
 
     // Nakyvissa on hahmon nimi, ei kirjautumistunnus. Raidissa katsotaan
     // hahmoa, ja tunnus on vain tapa paasta sisaan.
-    $("nimi").textContent = mina.user.character_name || mina.user.username;
-    $("rooli").textContent = ROOLIT[mina.user.role] || mina.user.role;
-    tila.rooli = mina.user.role;
+    const u = mina.user;
+    const nimi = $("nimi");
+    nimi.textContent = hahmonNimi(u);
+    nimi.style.color = luokanVari(u.class);
+
+    // Luokka ja raidirooli yhdella rivilla nimen alla. Killan arvo ei ole
+    // tassa: se kuuluu yllapitoon, ei hahmoikkunaan.
+    const osat = [];
+    if (LUOKAT[u.class]) osat.push(LUOKAT[u.class].nimi);
+    if (RAIDIROOLIT[u.raid_role]) osat.push(RAIDIROOLIT[u.raid_role]);
+    $("rooli").textContent = osat.join(" · ");
+
+    tila.rooli = u.role;
 
     // Lukko ei rajoita officeria, joten hanelle se ei ole "lukittu" tila
     // vaan pelkka merkinta.

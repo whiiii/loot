@@ -144,7 +144,9 @@ export async function haeKayttaja(env, request) {
   if (!token) return null;
 
   const rivi = await env.DB.prepare(
-    `SELECT u.id, u.username, u.role, u.character_name, u.class, u.locked
+    `SELECT u.id, u.username, u.role, u.character_name,
+            u.first_name, u.last_name, u.class, u.raid_role,
+            u.avatar_key, u.locked
        FROM sessions s
        JOIN users u ON u.id = s.user_id
       WHERE s.token = ? AND s.expires_at > datetime('now')`

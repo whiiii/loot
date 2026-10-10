@@ -3,6 +3,8 @@
  */
 import { haeAktiiviRaidi, PAIKAT } from "./valinnat.js";
 import { hashPassword } from "./auth.js";
+import { haeItemTiedot } from "./itemit.js";
+import { onLuokka, onRaidirooli } from "./hahmo.js";
 
 /** Kayttajat ja se montako valintaa kullakin on aktiivisessa raidissa. */
 export async function haeKayttajat(env) {
@@ -10,7 +12,8 @@ export async function haeKayttajat(env) {
   const raidId = raidi ? raidi.id : 0;
 
   const rivit = await env.DB.prepare(
-    `SELECT u.id, u.username, u.character_name, u.role, u.locked,
+    `SELECT u.id, u.username, u.character_name, u.first_name, u.last_name,
+            u.class, u.raid_role, u.role, u.locked, u.avatar_key,
             u.created_at, u.last_login_at,
             (SELECT COUNT(*) FROM picks p
               WHERE p.user_id = u.id AND p.raid_id = ?) AS valintoja
@@ -107,9 +110,15 @@ const TUNNUS_SAANTO = /^[A-Za-z0-9_-]{3,20}$/;
  */
 export async function luoKayttaja(env, actor, tiedot) {
   const tunnus = String(tiedot.username ?? "").trim();
-  const hahmo = String(tiedot.character_name ?? "").trim();
+  const etunimi = String(tiedot.first_name ?? "").trim();
+  const sukunimi = String(tiedot.last_name ?? "").trim();
+  const luokka = String(tiedot.class ?? "").trim();
+  const raidirooli = String(tiedot.raid_role ?? "").trim();
   const rooli = String(tiedot.role ?? "raider");
   const salasana = String(tiedot.password ?? "");
+
+  if (!onLuokka(luokka)) return { error: "Tuntematon luokka.", status: 400 };
+  if (!onRaidirooli(raidirooli)) return { error: "Tuntematon rooli.", status: 400 };
 
   if (!TUNNUS_SAANTO.test(tunnus)) {
     return {
@@ -137,10 +146,19 @@ export async function luoKayttaja(env, actor, tiedot) {
   const tiiviste = await hashPassword(salasana);
 
   await env.DB.prepare(
-    `INSERT INTO users (username, password_hash, role, character_name)
-     VALUES (?, ?, ?, ?)`
+    `INSERT INTO users
+       (username, password_hash, role, first_name, last_name, class, raid_role)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
   )
-    .bind(tunnus, tiiviste, rooli, hahmo || tunnus)
+    .bind(
+      tunnus,
+      tiiviste,
+      rooli,
+      etunimi || tunnus,
+      sukunimi || null,
+      luokka || null,
+      raidirooli || null
+    )
     .run();
 
   await kirjaa(env, actor, "LUO_KAYTTAJA", tunnus, `rooli=${rooli}`);
@@ -225,6 +243,96 @@ export async function asetaSalasana(env, actor, username, salasana) {
   // Salasanaa ei kirjata lokiin missaan muodossa.
   await kirjaa(env, actor, "VAIHDA_SALASANA", kohde.username, null);
   return { ok: true, username: kohde.username };
+}
+
+/**
+ * Officer paivittaa hahmon tiedot.
+ *
+ * Vain lahetetyt kentat muutetaan. Sama saanto kuin Roihutreffeissa opittiin
+ * kantapaan kautta: puuttuva kentta ei tarkoita "tyhjenna tama", vaan etta
+ * kutsuja ei puhunut siita mitaan.
+ */
+export async function paivitaHahmo(env, actor, username, muutokset) {
+  const kohde = await env.DB.prepare(
+    "SELECT id, username FROM users WHERE username = ?"
+  )
+    .bind(username)
+    .first();
+
+  if (!kohde) return { error: "Käyttäjää ei löydy.", status: 404 };
+
+  const sallitut = {
+    first_name: (v) => String(v).trim().slice(0, 40),
+    last_name: (v) => String(v).trim().slice(0, 40),
+    class: (v) => String(v).trim(),
+    raid_role: (v) => String(v).trim(),
+  };
+
+  const kentat = [];
+  const arvot = [];
+
+  for (const [nimi, siivoa] of Object.entries(sallitut)) {
+    if (!Object.hasOwn(muutokset, nimi)) continue;
+
+    const arvo = siivoa(muutokset[nimi] ?? "");
+
+    if (nimi === "class" && !onLuokka(arvo)) {
+      return { error: "Tuntematon luokka.", status: 400 };
+    }
+    if (nimi === "raid_role" && !onRaidirooli(arvo)) {
+      return { error: "Tuntematon rooli.", status: 400 };
+    }
+
+    kentat.push(`${nimi} = ?`);
+    arvot.push(arvo === "" ? null : arvo);
+  }
+
+  if (kentat.length === 0) return { ok: true, username: kohde.username };
+
+  await env.DB.prepare(`UPDATE users SET ${kentat.join(", ")} WHERE id = ?`)
+    .bind(...arvot, kohde.id)
+    .run();
+
+  await kirjaa(env, actor, "PAIVITA_HAHMO", kohde.username, kentat.join(", "));
+  return { ok: true, username: kohde.username };
+}
+
+/**
+ * Yhden kayttajan valinnat officerille.
+ *
+ * Itemtiedot haetaan mukaan, jotta lista on luettava: pelkat numerot
+ * eivat kerro officerille mitaan siita mita raideri haluaa.
+ */
+export async function haeKayttajanValinnat(env, username) {
+  const kohde = await env.DB.prepare(
+    `SELECT id, username, first_name, last_name, class, raid_role, locked
+       FROM users WHERE username = ?`
+  )
+    .bind(username)
+    .first();
+
+  if (!kohde) return { error: "Käyttäjää ei löydy.", status: 404 };
+
+  const raidi = await haeAktiiviRaidi(env);
+  if (!raidi) return { error: "Aktiivista raidia ei ole.", status: 409 };
+
+  const rivit = await env.DB.prepare(
+    "SELECT slot_key, item_id FROM picks WHERE user_id = ? AND raid_id = ?"
+  )
+    .bind(kohde.id, raidi.id)
+    .all();
+
+  const picks = {};
+  for (const r of rivit.results ?? []) picks[r.slot_key] = r.item_id;
+
+  return {
+    ok: true,
+    user: kohde,
+    raid: { id: raidi.id, name: raidi.name },
+    paikat: PAIKAT,
+    picks,
+    tiedot: await haeItemTiedot(env, Object.values(picks)),
+  };
 }
 
 /** Kayttaja lukitsee oman profiilinsa valmiiksi. */

@@ -2,10 +2,33 @@
  * Ylläpitosivu: profiililista, lukot ja vienti addoniin.
  */
 
-const ROOLIT = { social: "Social", raider: "Raider", officer: "Officer" };
+const ROOLIT = window.RANGIT;
+const IKONI = "https://wow.zamimg.com/images/wow/icons/large/";
 const $ = (id) => document.getElementById(id);
 
 let paikkoja = 0;
+
+/** Tayttaa valitsimen avain-nimi-parien perusteella. Tyhja = "ei valittu". */
+function taytaValitsin(sel, parit, valittu, tyhjaTeksti) {
+  sel.innerHTML = "";
+
+  const tyhja = document.createElement("option");
+  tyhja.value = "";
+  tyhja.textContent = tyhjaTeksti;
+  sel.appendChild(tyhja);
+
+  for (const [avain, nimi] of parit) {
+    const o = document.createElement("option");
+    o.value = avain;
+    o.textContent = nimi;
+    if (valittu === avain) o.selected = true;
+    sel.appendChild(o);
+  }
+  if (!valittu) tyhja.selected = true;
+}
+
+const LUOKKAPARIT = Object.entries(LUOKAT).map(([k, v]) => [k, v.nimi]);
+const ROOLIPARIT = Object.entries(RAIDIROOLIT);
 
 async function lataa() {
   try {
@@ -29,7 +52,7 @@ function piirra(users) {
   tbody.innerHTML = "";
 
   if (users.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" class="himmea">Ei käyttäjiä.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="himmea">Ei käyttäjiä.</td></tr>';
     return;
   }
 
@@ -37,14 +60,30 @@ function piirra(users) {
     const tr = document.createElement("tr");
 
     tr.appendChild(solu(u.username));
-    tr.appendChild(solu(u.character_name || "—"));
+
+    // Hahmon nimi luokan varissa, kuten pelissa.
+    const hahmo = solu(hahmonNimi(u));
+    hahmo.style.color = luokanVari(u.class);
+    hahmo.style.fontWeight = "600";
+    tr.appendChild(hahmo);
+
+    tr.appendChild(kenttaSolu(u, "class", LUOKKAPARIT, "— luokka —"));
+    tr.appendChild(kenttaSolu(u, "raid_role", ROOLIPARIT, "— rooli —"));
 
     const rooli = document.createElement("td");
     rooli.appendChild(roolivalitsin(u));
     tr.appendChild(rooli);
 
-    const valinnat = solu(`${u.valintoja} / ${paikkoja}`);
+    // Valintojen maara on myos linkki niiden katseluun: se on se luku josta
+    // officer haluaa tietaa lisaa.
+    const valinnat = document.createElement("td");
     valinnat.className = "oikealle";
+    const katso = document.createElement("button");
+    katso.className = "nappi-linkki";
+    katso.textContent = `${u.valintoja} / ${paikkoja}`;
+    katso.title = "Näytä valinnat";
+    katso.addEventListener("click", () => naytaValinnat(u.username));
+    valinnat.appendChild(katso);
     tr.appendChild(valinnat);
 
     const tila = document.createElement("td");
@@ -140,6 +179,48 @@ function roolivalitsin(u) {
   return sel;
 }
 
+/**
+ * Yhden kentan valitsin taulukossa.
+ *
+ * Lahettaa vain sen kentan jota muutettiin. Koko rivin lahettaminen
+ * tarkoittaisi etta samalla kirjoitetaan yli kentat joita ei koskettu -
+ * ja jos kaksi officeria muokkaa yhta aikaa, jalkimmainen pyyhkii
+ * ensimmaisen tyon.
+ */
+function kenttaSolu(u, kentta, parit, tyhjaTeksti) {
+  const td = document.createElement("td");
+  const sel = document.createElement("select");
+  sel.className = "roolivalinta";
+  taytaValitsin(sel, parit, u[kentta] || "", tyhjaTeksti);
+
+  if (kentta === "class") sel.style.color = luokanVari(u.class);
+
+  sel.addEventListener("change", async () => {
+    const vanha = u[kentta] || "";
+    try {
+      const d = await fetch("/api/hahmo", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ username: u.username, [kentta]: sel.value }),
+      }).then((r) => r.json());
+
+      if (!d.ok) {
+        naytaViesti(d.error || "Muutos ei onnistunut.");
+        sel.value = vanha;
+        return;
+      }
+      naytaViesti(`${u.username} päivitetty.`);
+      lataa();
+    } catch (err) {
+      naytaViesti("Virhe: " + (err && err.message ? err.message : String(err)));
+      sel.value = vanha;
+    }
+  });
+
+  td.appendChild(sel);
+  return td;
+}
+
 function solu(teksti) {
   const td = document.createElement("td");
   td.textContent = teksti;
@@ -223,6 +304,106 @@ async function vaihdaSalasana(username) {
   }
 }
 
+/* ---------- yhden jäsenen valinnat ---------- */
+
+async function naytaValinnat(username) {
+  const lista = $("valinnat-lista");
+  $("valinnat-otsikko").textContent = username;
+  lista.innerHTML = '<p class="himmea">Ladataan…</p>';
+  $("valinnat-peite").hidden = false;
+
+  try {
+    const d = await fetch(
+      "/api/valinnat?username=" + encodeURIComponent(username)
+    ).then((r) => r.json());
+
+    if (!d.ok) {
+      lista.innerHTML = `<p class="himmea">${d.error || "Haku epäonnistui."}</p>`;
+      return;
+    }
+
+    $("valinnat-otsikko").textContent = hahmonNimi(d.user);
+    $("valinnat-otsikko").style.color = luokanVari(d.user.class);
+
+    lista.innerHTML = "";
+    let valittuja = 0;
+
+    for (const paikka of d.paikat) {
+      const itemId = d.picks[paikka.key] ?? null;
+      if (itemId) valittuja++;
+
+      const rivi = document.createElement("div");
+      rivi.className = "valintarivi" + (itemId ? "" : " tyhja");
+
+      const nimi = document.createElement("span");
+      nimi.className = "valintarivi-paikka";
+      nimi.textContent = paikka.nimi;
+      rivi.appendChild(nimi);
+
+      if (itemId) {
+        const t = d.tiedot[itemId] || d.tiedot[String(itemId)] || null;
+
+        const kaari = document.createElement("span");
+        kaari.className = "item";
+
+        const ikoni = document.createElement("span");
+        ikoni.className = "item-ikoni";
+        if (t && t.icon) {
+          const img = document.createElement("img");
+          img.src = IKONI + t.icon + ".jpg";
+          img.alt = "";
+          img.loading = "lazy";
+          ikoni.appendChild(img);
+        }
+
+        const teksti = document.createElement("span");
+        teksti.className = "item-teksti";
+
+        const itemNimi = document.createElement("span");
+        itemNimi.className = "item-nimi q" + (t && t.quality != null ? t.quality : 1);
+        itemNimi.textContent = t && t.name ? t.name : "item " + itemId;
+
+        const id = document.createElement("span");
+        id.className = "item-id";
+        id.textContent = itemId;
+
+        teksti.appendChild(itemNimi);
+        teksti.appendChild(id);
+        kaari.appendChild(ikoni);
+        kaari.appendChild(teksti);
+        rivi.appendChild(kaari);
+      } else {
+        const tyhja = document.createElement("span");
+        tyhja.className = "tyhja-teksti";
+        tyhja.textContent = "— ei valintaa —";
+        rivi.appendChild(tyhja);
+      }
+
+      lista.appendChild(rivi);
+    }
+
+    const yhteenveto = document.createElement("p");
+    yhteenveto.className = "himmea pieni-teksti";
+    yhteenveto.style.marginTop = ".75rem";
+    yhteenveto.textContent =
+      `${valittuja} / ${d.paikat.length} valittu · ${d.raid.name}` +
+      (d.user.locked ? " · profiili lukittu" : "");
+    lista.appendChild(yhteenveto);
+  } catch (err) {
+    lista.innerHTML = `<p class="himmea">Virhe: ${err && err.message ? err.message : err}</p>`;
+  }
+}
+
+$("valinnat-sulje").addEventListener("click", () => {
+  $("valinnat-peite").hidden = true;
+});
+$("valinnat-peite").addEventListener("click", (e) => {
+  if (e.target === $("valinnat-peite")) $("valinnat-peite").hidden = true;
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") $("valinnat-peite").hidden = true;
+});
+
 /* ---------- jäsenten luonti ja poisto ---------- */
 
 document.getElementById("uusi").addEventListener("submit", async (e) => {
@@ -230,7 +411,10 @@ document.getElementById("uusi").addEventListener("submit", async (e) => {
 
   const tiedot = {
     username: $("u-tunnus").value.trim(),
-    character_name: $("u-hahmo").value.trim(),
+    first_name: $("u-etunimi").value.trim(),
+    last_name: $("u-sukunimi").value.trim(),
+    class: $("u-luokka").value,
+    raid_role: $("u-raidirooli").value,
     role: $("u-rooli").value,
     password: $("u-salasana").value,
   };
@@ -239,7 +423,9 @@ document.getElementById("uusi").addEventListener("submit", async (e) => {
     otsikko: "Luo jäsen",
     teksti:
       `Tunnus: ${tiedot.username}\n` +
-      `Hahmo: ${tiedot.character_name || tiedot.username}\n` +
+      `Hahmo: ${[tiedot.first_name || tiedot.username, tiedot.last_name].filter(Boolean).join(" ")}\n` +
+      `Luokka: ${LUOKAT[tiedot.class] ? LUOKAT[tiedot.class].nimi : "—"}\n` +
+      `Rooli: ${RAIDIROOLIT[tiedot.raid_role] || "—"}\n` +
       `Rooli: ${ROOLIT[tiedot.role]}\n\n` +
       "Kerro salasana hänelle itse — sitä ei lähetetä mihinkään.",
     vahvista: "Luo",
@@ -260,8 +446,11 @@ document.getElementById("uusi").addEventListener("submit", async (e) => {
 
     naytaViesti(`${d.username} luotu.`);
     $("u-tunnus").value = "";
-    $("u-hahmo").value = "";
+    $("u-etunimi").value = "";
+    $("u-sukunimi").value = "";
     $("u-salasana").value = "";
+    $("u-luokka").value = "";
+    $("u-raidirooli").value = "";
     $("u-rooli").value = "raider";
     lataa();
   } catch (err) {
@@ -350,5 +539,10 @@ $("ulos").addEventListener("click", async () => {
   await fetch("/api/ulos", { method: "POST" });
   location.href = "/";
 });
+
+// Luontilomakkeen valitsimet taytetaan samasta lahteesta kuin taulukon,
+// jottei listoja ole kahta eri paikassa.
+taytaValitsin($("u-luokka"), LUOKKAPARIT, "", "— luokka —");
+taytaValitsin($("u-raidirooli"), ROOLIPARIT, "", "— rooli —");
 
 lataa();

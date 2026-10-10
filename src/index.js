@@ -24,8 +24,10 @@ import {
   asetaLukko,
   asetaSalasana,
   haeKayttajat,
+  haeKayttajanValinnat,
   luoKayttaja,
   lukitseOma,
+  paivitaHahmo,
   poistaKayttaja,
   teeVienti,
   vaihdaRooli,
@@ -221,6 +223,26 @@ async function rajapinta(request, env, polku) {
       kayttaja.username,
       String(body.username ?? "")
     );
+    return json(tulos, tulos.error ? tulos.status : 200);
+  }
+
+  if (polku === "/api/hahmo" && request.method === "POST") {
+    const body = await lueJson(request);
+    const { username, ...muutokset } = body;
+    const tulos = await paivitaHahmo(
+      env,
+      kayttaja.username,
+      String(username ?? ""),
+      muutokset
+    );
+    return json(tulos, tulos.error ? tulos.status : 200);
+  }
+
+  if (polku === "/api/valinnat") {
+    // Osoite rakennetaan tassa: rajapinta saa vain polun, eika pyynnon
+    // kyselyosa ole muuten kasilla.
+    const nimi = new URL(request.url).searchParams.get("username") ?? "";
+    const tulos = await haeKayttajanValinnat(env, nimi);
     return json(tulos, tulos.error ? tulos.status : 200);
   }
 

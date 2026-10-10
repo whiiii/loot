@@ -28,9 +28,19 @@ CREATE TABLE IF NOT EXISTS users (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   username       TEXT NOT NULL COLLATE NOCASE UNIQUE,
   password_hash  TEXT NOT NULL,
+
+  -- Killan arvo. Eri asia kuin raid_role, joka on rooli raidissa.
   role           TEXT NOT NULL DEFAULT 'raider',
+
   character_name TEXT,
+  first_name     TEXT,
+  last_name      TEXT,
   class          TEXT,
+  raid_role      TEXT,
+
+  -- Viite omaan hahmokuvaan. Tyhja tarkoittaa oletuskuvaa, joten erillista
+  -- "onko oma kuva" -tilaa ei tarvita.
+  avatar_key     TEXT,
 
   -- Lukittu profiili: valinnat on tehty eika niita voi muuttaa ennen kuin
   -- officer avaa lukon.
@@ -165,5 +175,5 @@ CREATE TABLE IF NOT EXISTS item_cache (
 );
 
 
-INSERT INTO settings (key, value) VALUES ('schema_version', '3')
+INSERT INTO settings (key, value) VALUES ('schema_version', '4')
   ON CONFLICT(key) DO UPDATE SET value = excluded.value;
