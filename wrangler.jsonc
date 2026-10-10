@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "loot",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-01",
+
+  // Staattiset tiedostot tarjoillaan suoraan Cloudflaren reunalta.
+  // Worker ajetaan vain niille poluille joita public-kansiosta ei loydy,
+  // eli kayttoliittyma ei kulje lainkaan koodin lapi.
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+
+  // D1 on SQLite. database_id taytetaan kun kanta on luotu.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "loot-db",
+      "database_id": "TAYTETAAN"
+    }
+  ]
+}

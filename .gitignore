@@ -1,0 +1,13 @@
+node_modules/
+
+# Wranglerin paikallinen tila ja paikallinen D1-kanta.
+.wrangler/
+
+# Paikalliset salaisuudet. Tuotannon salaisuudet elavat Cloudflaren
+# puolella eivatka koskaan taalla.
+.dev.vars
+.env
+
+# Kayttojarjestelman roskat
+Thumbs.db
+.DS_Store
