@@ -43,6 +43,12 @@
 
 .lista .oikealle { text-align: right; }
 
+.lista .toiminnot {
+  display: flex;
+  gap: .4rem;
+  justify-content: flex-end;
+}
+
 .merkki {
   display: inline-block;
   padding: .1rem .5rem;

@@ -74,9 +74,29 @@ a.linkkinappi[hidden] { display: none; }
   border-radius: 10px;
   background: #100d09;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 1rem;
+  padding: 1.25rem 1rem;
   min-height: 340px;
+}
+
+/* Hahmon nimi kuvan ylapuolella, kuten pelin omassa ikkunassa. */
+.hahmo-otsikko { text-align: center; }
+.hahmo-otsikko strong {
+  display: block;
+  font-size: 1.25rem;
+  font-weight: 650;
+  letter-spacing: .01em;
+}
+.hahmo-otsikko span {
+  display: block;
+  margin-top: .1rem;
+  font-size: .78rem;
+  color: var(--himmea);
+  text-transform: uppercase;
+  letter-spacing: .08em;
 }
 .keski-tyhja { color: #3a3228; font-size: .9rem; letter-spacing: .25em; }
 .keski img {

@@ -2,6 +2,7 @@
  * Officerin tyokalut: kayttajalista, lukot ja vienti addoniin.
  */
 import { haeAktiiviRaidi, PAIKAT } from "./valinnat.js";
+import { hashPassword } from "./auth.js";
 
 /** Kayttajat ja se montako valintaa kullakin on aktiivisessa raidissa. */
 export async function haeKayttajat(env) {
@@ -91,6 +92,46 @@ export async function vaihdaRooli(env, actor, username, rooli) {
 
   await kirjaa(env, actor, "VAIHDA_ROOLI", kohde.username, `${kohde.role} -> ${rooli}`);
   return { ok: true, username: kohde.username, role: rooli };
+}
+
+export const SALASANA_MIN = 6;
+
+/**
+ * Officer asettaa kayttajalle uuden salasanan.
+ *
+ * Vanhoja istuntoja ei jateta voimaan. Salasanan vaihto on usein juuri se
+ * hetki jolloin halutaan katkaista paasy - jos istunnot jaisivat elamaan,
+ * vaihto ei tekisi sita mita siita odotetaan.
+ */
+export async function asetaSalasana(env, actor, username, salasana) {
+  if (String(salasana).length < SALASANA_MIN) {
+    return {
+      error: `Salasanan on oltava vähintään ${SALASANA_MIN} merkkiä.`,
+      status: 400,
+    };
+  }
+
+  const kohde = await env.DB.prepare(
+    "SELECT id, username FROM users WHERE username = ?"
+  )
+    .bind(username)
+    .first();
+
+  if (!kohde) return { error: "Käyttäjää ei löydy.", status: 404 };
+
+  const tiiviste = await hashPassword(salasana);
+
+  await env.DB.batch([
+    env.DB.prepare("UPDATE users SET password_hash = ? WHERE id = ?").bind(
+      tiiviste,
+      kohde.id
+    ),
+    env.DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(kohde.id),
+  ]);
+
+  // Salasanaa ei kirjata lokiin missaan muodossa.
+  await kirjaa(env, actor, "VAIHDA_SALASANA", kohde.username, null);
+  return { ok: true, username: kohde.username };
 }
 
 /** Kayttaja lukitsee oman profiilinsa valmiiksi. */

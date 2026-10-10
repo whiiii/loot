@@ -54,11 +54,20 @@ function piirra(users) {
     tr.appendChild(tila);
 
     const toiminto = document.createElement("td");
-    const nappi = document.createElement("button");
-    nappi.className = "pieni";
-    nappi.textContent = u.locked ? "Avaa lukko" : "Lukitse";
-    nappi.addEventListener("click", () => vaihdaLukko(u.username, !u.locked));
-    toiminto.appendChild(nappi);
+    toiminto.className = "toiminnot";
+
+    const lukko = document.createElement("button");
+    lukko.className = "pieni";
+    lukko.textContent = u.locked ? "Avaa lukko" : "Lukitse";
+    lukko.addEventListener("click", () => vaihdaLukko(u.username, !u.locked));
+    toiminto.appendChild(lukko);
+
+    const salasana = document.createElement("button");
+    salasana.className = "pieni";
+    salasana.textContent = "Vaihda salasana";
+    salasana.addEventListener("click", () => vaihdaSalasana(u.username));
+    toiminto.appendChild(salasana);
+
     tr.appendChild(toiminto);
 
     tbody.appendChild(tr);
@@ -159,6 +168,48 @@ async function vaihdaLukko(username, locked) {
     }
     naytaViesti(locked ? `${username} lukittu.` : `${username} avattu.`);
     lataa();
+  } catch (err) {
+    naytaViesti("Virhe: " + (err && err.message ? err.message : String(err)));
+  }
+}
+
+/**
+ * Officer asettaa uuden salasanan.
+ *
+ * Salasana naytetaan kirjoitettaessa selvakielisena: officer joutuu
+ * kertomaan sen raiderille, joten piilottaminen vain lisaisi kirjoitusvirheita
+ * ilman etta suojaisi mitaan.
+ */
+async function vaihdaSalasana(username) {
+  const uusi = await vahvista({
+    otsikko: "Vaihda salasana",
+    teksti:
+      `Aseta uusi salasana käyttäjälle ${username}.\n\n` +
+      "Hänen avoimet istuntonsa katkeavat, joten hän joutuu kirjautumaan " +
+      "uudelleen tällä salasanalla.",
+    vahvista: "Aseta salasana",
+    syote: {
+      tyyppi: "text",
+      vihje: "Uusi salasana",
+      minimi: 6,
+      virhe: "Salasanan on oltava vähintään 6 merkkiä.",
+    },
+  });
+
+  if (uusi === null) return;
+
+  try {
+    const d = await fetch("/api/salasana", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username, password: uusi }),
+    }).then((r) => r.json());
+
+    if (!d.ok) {
+      naytaViesti(d.error || "Salasanan vaihto ei onnistunut.");
+      return;
+    }
+    naytaViesti(`${username}: salasana vaihdettu.`);
   } catch (err) {
     naytaViesti("Virhe: " + (err && err.message ? err.message : String(err)));
   }

@@ -42,6 +42,26 @@
   white-space: pre-line;
 }
 
+.dlg-syote {
+  width: 100%;
+  margin: 0 0 1rem;
+  padding: .6rem .7rem;
+  background: #120f0a;
+  border: 1px solid var(--reuna);
+  border-radius: 7px;
+  color: var(--teksti);
+  font: inherit;
+}
+.dlg-syote:focus { outline: none; border-color: var(--korostus); }
+.dlg-syote[hidden] { display: none; }
+
+.dlg-virhe {
+  margin: -.6rem 0 1rem;
+  font-size: .82rem;
+  color: var(--virhe);
+}
+.dlg-virhe[hidden] { display: none; }
+
 .dlg-napit {
   display: flex;
   gap: .6rem;

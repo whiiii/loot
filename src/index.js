@@ -22,6 +22,7 @@ import { haeNakyma, tallennaValinta } from "./valinnat.js";
 import { haeItemTiedot } from "./itemit.js";
 import {
   asetaLukko,
+  asetaSalasana,
   haeKayttajat,
   lukitseOma,
   teeVienti,
@@ -191,6 +192,17 @@ async function rajapinta(request, env, polku) {
       kayttaja.username,
       String(body.username ?? ""),
       String(body.role ?? "")
+    );
+    return json(tulos, tulos.error ? tulos.status : 200);
+  }
+
+  if (polku === "/api/salasana" && request.method === "POST") {
+    const body = await lueJson(request);
+    const tulos = await asetaSalasana(
+      env,
+      kayttaja.username,
+      String(body.username ?? ""),
+      String(body.password ?? "")
     );
     return json(tulos, tulos.error ? tulos.status : 200);
   }
