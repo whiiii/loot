@@ -46,7 +46,29 @@ function rooliVirhe(luokka, rooli) {
   return `${luokanNimi} ei voi olla ${RAIDIROOLIT[rooli] || rooli}. Sallitut: ${sallitut}.`;
 }
 
-/** Kayttajat ja se montako valintaa kullakin on aktiivisessa raidissa. */
+/**
+ * Loottihistorian ja kayttajan yhdistava ehto, SQL-lausekkeena.
+ *
+ * Voittaja on hahmon nimi pelista, ja se yhdistetaan tunnukseen jos
+ * sellainen loytyi tuonnissa. Nimivertailu on mukana siksi, etta tuonti
+ * saattoi tapahtua ennen kuin tunnus oli olemassa - historia ei saa kadota
+ * siita etta rivi kirjattiin vaarassa jarjestyksessa.
+ */
+const HISTORIA_OSUU = `(
+  h.user_id = u.id
+  OR LOWER(h.winner) = LOWER(COALESCE(u.first_name, ''))
+  OR LOWER(h.winner) = LOWER(COALESCE(u.character_name, ''))
+  OR LOWER(h.winner) = LOWER(COALESCE(u.username, ''))
+)`;
+
+/**
+ * Kayttajat seka valintojen ja saatujen maara aktiivisessa raidissa.
+ *
+ * Saatuja lasketaan vain profiilissa olevista itemeista: luku vastaa
+ * kysymykseen "montako valitsemaansa han on jo saanut", ei sita montako
+ * itemia han on kaikkiaan saanut. Jalkimmainen on addonin SAATU-sarake ja
+ * eri asia.
+ */
 export async function haeKayttajat(env) {
   const raidi = await haeAktiiviRaidi(env);
   const raidId = raidi ? raidi.id : 0;
@@ -56,13 +78,18 @@ export async function haeKayttajat(env) {
             u.class, u.raid_role, u.role, u.locked, u.avatar_key,
             u.created_at, u.last_login_at,
             (SELECT COUNT(*) FROM picks p
-              WHERE p.user_id = u.id AND p.raid_id = ?) AS valintoja
+              WHERE p.user_id = u.id AND p.raid_id = ?) AS valintoja,
+            (SELECT COUNT(DISTINCT p.item_id) FROM picks p
+              WHERE p.user_id = u.id AND p.raid_id = ?
+                AND EXISTS (SELECT 1 FROM loot_history h
+                             WHERE h.item_id = p.item_id
+                               AND ${HISTORIA_OSUU})) AS saatuja
        FROM users u
       ORDER BY
         CASE u.role WHEN 'officer' THEN 0 WHEN 'raider' THEN 1 ELSE 2 END,
         u.username COLLATE NOCASE`
   )
-    .bind(raidId)
+    .bind(raidId, raidId)
     .all();
 
   return {

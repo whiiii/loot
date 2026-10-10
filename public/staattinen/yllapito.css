@@ -45,6 +45,13 @@
 
 .lista .oikealle { text-align: right; }
 
+/* Saatu-sarake.
+   Kolme tilaa, koska luku yksin ei erota tyhjaa profiilia aloittamattomasta:
+   vaimea = ei valintoja, kulta = kesken, vihrea = kaikki saatu. */
+.lista td.vaimea { color: var(--vaimea); }
+.lista td.kesken { color: var(--kulta); }
+.lista td.valmis { color: var(--ok); }
+
 .lista .toiminnot {
   display: flex;
   gap: .4rem;

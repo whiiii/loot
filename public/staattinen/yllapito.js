@@ -59,6 +59,9 @@ const LAJITTELUT = {
   raid_role: (u) => (RAIDIROOLIT[u.raid_role] || "ö").toLowerCase(),
   role:      (u) => ["officer", "raider", "social"].indexOf(u.role),
   valintoja: (u) => u.valintoja,
+  // Osuus eika lukumaara: 3/5 on pidemmalla kuin 3/17, ja juuri sita
+  // sarakkeesta katsotaan.
+  saatuja:   (u) => (u.valintoja ? (u.saatuja ?? 0) / u.valintoja : -1),
   locked:    (u) => (u.locked ? 1 : 0),
 };
 
@@ -112,7 +115,7 @@ async function lataa() {
     const d = await fetch("/api/kayttajat").then((r) => r.json());
     if (!d.ok) {
       $("kayttajat").innerHTML =
-        `<tr><td colspan="8" class="himmea">${d.error || "Haku epäonnistui."}</td></tr>`;
+        `<tr><td colspan="9" class="himmea">${d.error || "Haku epäonnistui."}</td></tr>`;
       return;
     }
 
@@ -131,7 +134,7 @@ function piirra(users) {
   tbody.innerHTML = "";
 
   if (users.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" class="himmea">Ei käyttäjiä.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="himmea">Ei käyttäjiä.</td></tr>';
     return;
   }
 
@@ -167,6 +170,20 @@ function piirra(users) {
     const valinnat = solu(`${u.valintoja} / ${paikkoja}`);
     valinnat.className = "oikealle";
     tr.appendChild(valinnat);
+
+    // Saatu suhteutetaan valintoihin eika paikkojen maaraan: kysymys on
+    // siita montako valitsemaansa han on jo saanut. Tyhja profiili nayttaa
+    // viivan, koska 0 / 0 ei kerro mitaan.
+    const saatuja = u.saatuja ?? 0;
+    const saatu = solu(u.valintoja ? `${saatuja} / ${u.valintoja}` : "—");
+    saatu.className = "oikealle";
+    if (!u.valintoja) saatu.classList.add("vaimea");
+    else if (saatuja >= u.valintoja) saatu.classList.add("valmis");
+    else if (saatuja > 0) saatu.classList.add("kesken");
+    saatu.title = u.valintoja
+      ? `${saatuja} / ${u.valintoja} valitusta itemistä saatu`
+      : "Ei valintoja";
+    tr.appendChild(saatu);
 
     const tila = document.createElement("td");
     tila.appendChild(
