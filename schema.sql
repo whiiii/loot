@@ -131,6 +131,14 @@ CREATE TABLE IF NOT EXISTS loot_history (
   winner     TEXT NOT NULL COLLATE NOCASE,
   user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
   boss       TEXT,
+
+  -- Milla perusteella item annettiin: prio, main, off, muu. Addonin
+  -- vastausnapin koodi sellaisenaan. "Kuka sai ja milla napilla" on se mita
+  -- historiasta jalkikateen kysytaan, joten numeron rinnalla talletetaan
+  -- myos peruste.
+  response   TEXT,
+  roll       INTEGER,
+
   awarded_at TEXT NOT NULL,
   awarded_by TEXT,
   imported_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -175,5 +183,5 @@ CREATE TABLE IF NOT EXISTS item_cache (
 );
 
 
-INSERT INTO settings (key, value) VALUES ('schema_version', '4')
+INSERT INTO settings (key, value) VALUES ('schema_version', '5')
   ON CONFLICT(key) DO UPDATE SET value = excluded.value;

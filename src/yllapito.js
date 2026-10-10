@@ -13,6 +13,15 @@ import {
   rooliSopii,
 } from "./hahmo.js";
 
+/**
+ * Jaon perusteet eli addonin vastausnappien koodit.
+ *
+ * Tuonti hyvaksyy vain nama: muu arvo tulisi muokatusta addonista, eika
+ * sellaista kannata paastaa kantaan nakymiin asti. "pass" ei ole mukana -
+ * passannut ei voi voittaa itemia.
+ */
+const PERUSTEET = new Set(["prio", "main", "off", "muu"]);
+
 /** Selkokielinen virheilmoitus kelpaamattomasta luokka-rooli-parista. */
 function rooliVirhe(luokka, rooli) {
   const luokanNimi = LUOKAT[luokka] ? LUOKAT[luokka].nimi : luokka;
@@ -362,7 +371,10 @@ export async function paivitaHahmo(env, actor, username, muutokset) {
  *   LOOTHIST1
  *   RAID=Molten Core
  *   TIME=2026-10-10 20:05:00
- *   L=<itemId>|<voittaja>|<aika>|<roll tai ->
+ *   L=<itemId>|<voittaja>|<aika>|<roll tai ->|<peruste tai ->
+ *
+ * Kaksi viimeista kenttaa ovat vapaaehtoisia: addonin vanhempi versio ei
+ * lahettanyt niita, ja vanha vienti pitaa silti voida tuoda.
  *
  * Tuonti on idempotentti: taulun UNIQUE estaa saman rivin kahdentumisen,
  * joten saman viennin voi tuoda uudelleen. Se on olennaista, koska tuonti
@@ -407,10 +419,18 @@ export async function tuoHistoria(env, actor, teksti) {
       continue;
     }
 
+    // Addon merkitsee puuttuvan kentan viivalla. Tuntematon peruste
+    // hylataan: tunnetut koodit tulevat addonin napeista, eika muuta
+    // kannata paastaa kantaan talletettavaksi.
+    const luku = parseInt((osat[3] || "").trim(), 10);
+    const koodi = (osat[4] || "").trim().toLowerCase();
+
     rivit.push({
       itemId,
       voittaja,
       aika,
+      luku: Number.isFinite(luku) ? luku : null,
+      koodi: PERUSTEET.has(koodi) ? koodi : null,
       userId: nimella.get(voittaja.toLowerCase()) ?? null,
     });
   }
@@ -425,10 +445,12 @@ export async function tuoHistoria(env, actor, teksti) {
     const era = rivit.slice(i, i + 50).map((r) =>
       env.DB.prepare(
         `INSERT INTO loot_history
-           (raid_id, item_id, winner, user_id, awarded_at, awarded_by)
-         VALUES (?, ?, ?, ?, ?, ?)
+           (raid_id, item_id, winner, user_id, response, roll,
+            awarded_at, awarded_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(item_id, winner, awarded_at) DO NOTHING`
-      ).bind(raidId, r.itemId, r.voittaja, r.userId, r.aika, actor)
+      ).bind(raidId, r.itemId, r.voittaja, r.userId, r.koodi, r.luku,
+        r.aika, actor)
     );
 
     const tulokset = await env.DB.batch(era);
