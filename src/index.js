@@ -32,7 +32,7 @@ export default {
 async function health(env) {
   try {
     const row = await env.DB.prepare(
-      "SELECT value FROM meta WHERE key = ?"
+      "SELECT value FROM settings WHERE key = ?"
     )
       .bind("schema_version")
       .first();
