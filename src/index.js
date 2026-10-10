@@ -23,8 +23,8 @@ import { haeItemTiedot } from "./itemit.js";
 import {
   asetaLukko,
   asetaSalasana,
+  haeKayttajaNimella,
   haeKayttajat,
-  haeKayttajanValinnat,
   luoKayttaja,
   lukitseOma,
   paivitaHahmo,
@@ -134,7 +134,22 @@ async function rajapinta(request, env, polku) {
   if (!kayttaja) return json({ error: "Ei kirjautunut." }, 401);
 
   if (polku === "/api/nakyma") {
-    const nakyma = await haeNakyma(env, kayttaja.id);
+    // Officer voi katsoa toisen profiilin samalla nakymalla. Oma profiili
+    // ja toisen katselu ovat sama ruutu, joten ne ovat sama rajapintakin -
+    // kaksi erillista olisi kaksi paikkaa jotka voivat ajautua erilleen.
+    const katso = new URL(request.url).searchParams.get("username") ?? "";
+    let kohde = kayttaja;
+
+    if (katso && katso.toLowerCase() !== kayttaja.username.toLowerCase()) {
+      if (!onOfficer(kayttaja)) return json({ error: "Vain officerille." }, 403);
+
+      kohde = await haeKayttajaNimella(env, katso);
+      if (!kohde) return json({ error: "Käyttäjää ei löydy." }, 404);
+    }
+
+    const nakyma = await haeNakyma(env, kohde.id);
+    nakyma.user = kohde;
+    nakyma.omaProfiili = kohde.id === kayttaja.id;
 
     // Itemien nimet haetaan samassa vastauksessa. Erillinen kutsu tarkoittaisi
     // etta lista valahtaa ensin numeroina ja tayttyy vasta sen jalkeen.
@@ -235,14 +250,6 @@ async function rajapinta(request, env, polku) {
       String(username ?? ""),
       muutokset
     );
-    return json(tulos, tulos.error ? tulos.status : 200);
-  }
-
-  if (polku === "/api/valinnat") {
-    // Osoite rakennetaan tassa: rajapinta saa vain polun, eika pyynnon
-    // kyselyosa ole muuten kasilla.
-    const nimi = new URL(request.url).searchParams.get("username") ?? "";
-    const tulos = await haeKayttajanValinnat(env, nimi);
     return json(tulos, tulos.error ? tulos.status : 200);
   }
 

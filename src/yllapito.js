@@ -297,42 +297,15 @@ export async function paivitaHahmo(env, actor, username, muutokset) {
   return { ok: true, username: kohde.username };
 }
 
-/**
- * Yhden kayttajan valinnat officerille.
- *
- * Itemtiedot haetaan mukaan, jotta lista on luettava: pelkat numerot
- * eivat kerro officerille mitaan siita mita raideri haluaa.
- */
-export async function haeKayttajanValinnat(env, username) {
-  const kohde = await env.DB.prepare(
-    `SELECT id, username, first_name, last_name, class, raid_role, locked
+/** Hakee kayttajan nimella nakymaa varten. */
+export async function haeKayttajaNimella(env, username) {
+  return await env.DB.prepare(
+    `SELECT id, username, role, character_name, first_name, last_name,
+            class, raid_role, avatar_key, locked
        FROM users WHERE username = ?`
   )
     .bind(username)
     .first();
-
-  if (!kohde) return { error: "Käyttäjää ei löydy.", status: 404 };
-
-  const raidi = await haeAktiiviRaidi(env);
-  if (!raidi) return { error: "Aktiivista raidia ei ole.", status: 409 };
-
-  const rivit = await env.DB.prepare(
-    "SELECT slot_key, item_id FROM picks WHERE user_id = ? AND raid_id = ?"
-  )
-    .bind(kohde.id, raidi.id)
-    .all();
-
-  const picks = {};
-  for (const r of rivit.results ?? []) picks[r.slot_key] = r.item_id;
-
-  return {
-    ok: true,
-    user: kohde,
-    raid: { id: raidi.id, name: raidi.name },
-    paikat: PAIKAT,
-    picks,
-    tiedot: await haeItemTiedot(env, Object.values(picks)),
-  };
 }
 
 /** Kayttaja lukitsee oman profiilinsa valmiiksi. */

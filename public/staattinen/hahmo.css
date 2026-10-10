@@ -50,6 +50,19 @@ a.linkkinappi[hidden] { display: none; }
   font-size: .86rem;
 }
 
+/* Toisen profiilin katselu erottuu omalla savyllaan, jottei officer luule
+   katsovansa omaa profiiliaan. */
+.ilmoitus.katselu {
+  border-color: #2e5668;
+  background: #0e1a20;
+  color: #8fc4dc;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.ilmoitus.katselu a { color: #8fc4dc; }
+
 /* Hahmoikkuna.
    Kaksi saraketta reunoilla, keskella tyhja alue ja alla kolme asepaikkaa. */
 .hahmo {

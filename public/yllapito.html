@@ -30,13 +30,13 @@
     <table class="lista">
       <thead>
         <tr>
-          <th>Tunnus</th>
-          <th>Hahmo</th>
-          <th>Luokka</th>
-          <th>Rooli</th>
-          <th>Rank</th>
-          <th class="oikealle">Valinnat</th>
-          <th>Tila</th>
+          <th data-lajittele="username">Tunnus</th>
+          <th data-lajittele="hahmo">Hahmo</th>
+          <th data-lajittele="class">Luokka</th>
+          <th data-lajittele="raid_role">Rooli</th>
+          <th data-lajittele="role">Rank</th>
+          <th data-lajittele="valintoja" class="oikealle">Valinnat</th>
+          <th data-lajittele="locked">Tila</th>
           <th></th>
         </tr>
       </thead>
@@ -56,12 +56,11 @@
       </div>
       <div class="kentta">
         <label for="u-etunimi">Etunimi</label>
-        <input type="text" id="u-etunimi" maxlength="40"
-               placeholder="sama kuin tunnus">
+        <input type="text" id="u-etunimi" maxlength="40">
       </div>
       <div class="kentta">
         <label for="u-sukunimi">Sukunimi</label>
-        <input type="text" id="u-sukunimi" maxlength="40" placeholder="valinnainen">
+        <input type="text" id="u-sukunimi" maxlength="40">
       </div>
       <div class="kentta kapea">
         <label for="u-luokka">Luokka</label>
@@ -79,10 +78,10 @@
           <option value="officer">Officer</option>
         </select>
       </div>
-      <div class="kentta">
+      <div class="kentta kapea">
         <label for="u-salasana">Salasana</label>
         <input type="text" id="u-salasana" required minlength="6"
-               placeholder="vähintään 6 merkkiä">
+               placeholder="väh. 6 merkkiä">
       </div>
       <div class="kentta nappirivi">
         <button type="submit" class="nappi-ensisijainen">Luo jäsen</button>
@@ -103,17 +102,6 @@
   </section>
 
 </main>
-
-<!-- Yhden jäsenen valinnat -->
-<div class="peite" id="valinnat-peite" hidden>
-  <div class="valitsin leveampi">
-    <div class="valitsin-ylaosa">
-      <strong id="valinnat-otsikko"></strong>
-      <button class="nappi-hillitty" id="valinnat-sulje">Sulje</button>
-    </div>
-    <div class="valitsin-lista" id="valinnat-lista"></div>
-  </div>
-</div>
 
 <div class="viesti" id="viesti"></div>
 

@@ -47,6 +47,14 @@
   display: flex;
   gap: .4rem;
   justify-content: flex-end;
+  align-items: center;
+}
+
+/* Linkki joka nayttaa napilta. */
+.lista .toiminnot a.nappi-hillitty {
+  display: inline-block;
+  text-decoration: none;
+  line-height: 1.3;
 }
 
 .merkki {
@@ -123,17 +131,15 @@
 }
 .nappi-vaara:hover { background: #2a1512; border-color: #c75c4a; color: #e8a79a; }
 
-/* Luku joka on samalla linkki tarkempaan nakymaan. */
+/* Luku joka on samalla linkki profiiliin. */
 .nappi-linkki {
-  width: auto;
+  display: inline-block;
   padding: .15rem .35rem;
-  background: transparent;
   border: 1px solid transparent;
   border-radius: 5px;
   color: var(--teksti);
-  font: inherit;
   font-size: .86rem;
-  cursor: pointer;
+  text-decoration: none;
 }
 .nappi-linkki:hover {
   border-color: var(--reuna);
@@ -141,27 +147,22 @@
   color: var(--korostus);
 }
 
-/* Yhden jäsenen valinnat. */
-.valitsin.leveampi { max-width: 440px; }
-
-.valintarivi {
-  display: flex;
-  align-items: center;
-  gap: .75rem;
-  padding: .35rem .4rem;
-  border-bottom: 1px solid rgba(255,255,255,.04);
+/* Lajiteltavat otsikot. */
+.lista th[data-lajittele] {
+  cursor: pointer;
+  user-select: none;
 }
+.lista th[data-lajittele]:hover { color: var(--teksti); }
+.lista th.lajiteltu { color: var(--korostus); }
 
-.valintarivi-paikka {
-  flex: 0 0 92px;
-  font-size: .7rem;
-  color: var(--himmea);
-  text-transform: uppercase;
-  letter-spacing: .04em;
+.lista th[data-lajittele]::after {
+  content: "";
+  display: inline-block;
+  margin-left: .3rem;
+  opacity: .5;
 }
-
-.valintarivi .tyhja-teksti { color: #5d5447; font-size: .82rem; }
-.valintarivi.tyhja { opacity: .65; }
+.lista th[data-suunta="ylos"]::after { content: "▲"; opacity: 1; }
+.lista th[data-suunta="alas"]::after { content: "▼"; opacity: 1; }
 
 /* Lomake. */
 .lomake {

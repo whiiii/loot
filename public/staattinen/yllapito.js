@@ -3,24 +3,65 @@
  */
 
 const ROOLIT = window.RANGIT;
-const IKONI = "https://wow.zamimg.com/images/wow/icons/large/";
 const $ = (id) => document.getElementById(id);
 
 let paikkoja = 0;
+let kaikki = [];
 
-/** Tayttaa valitsimen avain-nimi-parien perusteella. Tyhja = "ei valittu". */
-function taytaValitsin(sel, parit, valittu, tyhjaTeksti) {
+/**
+ * Lajittelu otsikon mukaan.
+ *
+ * Jarjestysarvo haetaan omalla funktiolla kentan sijaan, koska naytettava
+ * arvo ja lajiteltava arvo eivat ole sama asia: luokka talletetaan
+ * avaimena ("warrior") mutta listassa lukee nimi, ja valintojen maara on
+ * luku vaikka solussa lukee "16 / 17".
+ */
+const LAJITTELUT = {
+  username:  (u) => (u.username || "").toLowerCase(),
+  hahmo:     (u) => hahmonNimi(u).toLowerCase(),
+  class:     (u) => (LUOKAT[u.class] ? LUOKAT[u.class].nimi : "ö").toLowerCase(),
+  raid_role: (u) => (RAIDIROOLIT[u.raid_role] || "ö").toLowerCase(),
+  role:      (u) => ["officer", "raider", "social"].indexOf(u.role),
+  valintoja: (u) => u.valintoja,
+  locked:    (u) => (u.locked ? 1 : 0),
+};
+
+let lajitteluKentta = "role";
+let lajitteluNouseva = true;
+
+function jarjesta(users) {
+  const avain = LAJITTELUT[lajitteluKentta] || LAJITTELUT.username;
+  const suunta = lajitteluNouseva ? 1 : -1;
+
+  return [...users].sort((a, b) => {
+    const x = avain(a);
+    const y = avain(b);
+    if (typeof x === "number" && typeof y === "number") return (x - y) * suunta;
+    return String(x).localeCompare(String(y), "fi") * suunta;
+  });
+}
+
+/**
+ * Tayttaa valitsimen avain-nimi-parien perusteella. Tyhja = "ei valittu".
+ *
+ * Luokkavalitsimessa jokainen vaihtoehto varitetaan omalla varillaan, ei
+ * vain valittu. Muuten koko lista nayttaa siita luokasta jonka sattuu
+ * olevan valittuna, mika on hamaavaa juuri silloin kun luokkaa vaihdetaan.
+ */
+function taytaValitsin(sel, parit, valittu, tyhjaTeksti, varit) {
   sel.innerHTML = "";
 
   const tyhja = document.createElement("option");
   tyhja.value = "";
   tyhja.textContent = tyhjaTeksti;
+  tyhja.style.color = "var(--himmea)";
   sel.appendChild(tyhja);
 
   for (const [avain, nimi] of parit) {
     const o = document.createElement("option");
     o.value = avain;
     o.textContent = nimi;
+    if (varit) o.style.color = varit(avain);
     if (valittu === avain) o.selected = true;
     sel.appendChild(o);
   }
@@ -35,13 +76,15 @@ async function lataa() {
     const d = await fetch("/api/kayttajat").then((r) => r.json());
     if (!d.ok) {
       $("kayttajat").innerHTML =
-        `<tr><td colspan="6" class="himmea">${d.error || "Haku epäonnistui."}</td></tr>`;
+        `<tr><td colspan="8" class="himmea">${d.error || "Haku epäonnistui."}</td></tr>`;
       return;
     }
 
     paikkoja = d.paikkoja || 0;
+    kaikki = d.users || [];
     $("raidi").textContent = d.raid ? d.raid.name : "Ei aktiivista raidia";
-    piirra(d.users || []);
+    piirra(jarjesta(kaikki));
+    merkitseOtsikko();
   } catch (err) {
     naytaViesti("Virhe: " + (err && err.message ? err.message : String(err)));
   }
@@ -74,15 +117,15 @@ function piirra(users) {
     rooli.appendChild(roolivalitsin(u));
     tr.appendChild(rooli);
 
-    // Valintojen maara on myos linkki niiden katseluun: se on se luku josta
+    // Valintojen maara on myos linkki profiiliin: se on se luku josta
     // officer haluaa tietaa lisaa.
     const valinnat = document.createElement("td");
     valinnat.className = "oikealle";
-    const katso = document.createElement("button");
+    const katso = document.createElement("a");
     katso.className = "nappi-linkki";
+    katso.href = "/profiili?katso=" + encodeURIComponent(u.username);
     katso.textContent = `${u.valintoja} / ${paikkoja}`;
-    katso.title = "Näytä valinnat";
-    katso.addEventListener("click", () => naytaValinnat(u.username));
+    katso.title = "Avaa profiili";
     valinnat.appendChild(katso);
     tr.appendChild(valinnat);
 
@@ -94,6 +137,12 @@ function piirra(users) {
 
     const toiminto = document.createElement("td");
     toiminto.className = "toiminnot";
+
+    const profiili = document.createElement("a");
+    profiili.className = "nappi-hillitty";
+    profiili.href = "/profiili?katso=" + encodeURIComponent(u.username);
+    profiili.textContent = "Profiili";
+    toiminto.appendChild(profiili);
 
     // Napit eroavat toisistaan tarkoituksella. Lukko on arkinen toiminto,
     // salasana hillitty, poisto peruuttamaton - ja sen pitaa nayttaa silta.
@@ -191,7 +240,9 @@ function kenttaSolu(u, kentta, parit, tyhjaTeksti) {
   const td = document.createElement("td");
   const sel = document.createElement("select");
   sel.className = "roolivalinta";
-  taytaValitsin(sel, parit, u[kentta] || "", tyhjaTeksti);
+
+  const varit = kentta === "class" ? luokanVari : null;
+  taytaValitsin(sel, parit, u[kentta] || "", tyhjaTeksti, varit);
 
   if (kentta === "class") sel.style.color = luokanVari(u.class);
 
@@ -304,104 +355,31 @@ async function vaihdaSalasana(username) {
   }
 }
 
-/* ---------- yhden jäsenen valinnat ---------- */
+/* ---------- lajittelu ---------- */
 
-async function naytaValinnat(username) {
-  const lista = $("valinnat-lista");
-  $("valinnat-otsikko").textContent = username;
-  lista.innerHTML = '<p class="himmea">Ladataan…</p>';
-  $("valinnat-peite").hidden = false;
-
-  try {
-    const d = await fetch(
-      "/api/valinnat?username=" + encodeURIComponent(username)
-    ).then((r) => r.json());
-
-    if (!d.ok) {
-      lista.innerHTML = `<p class="himmea">${d.error || "Haku epäonnistui."}</p>`;
-      return;
-    }
-
-    $("valinnat-otsikko").textContent = hahmonNimi(d.user);
-    $("valinnat-otsikko").style.color = luokanVari(d.user.class);
-
-    lista.innerHTML = "";
-    let valittuja = 0;
-
-    for (const paikka of d.paikat) {
-      const itemId = d.picks[paikka.key] ?? null;
-      if (itemId) valittuja++;
-
-      const rivi = document.createElement("div");
-      rivi.className = "valintarivi" + (itemId ? "" : " tyhja");
-
-      const nimi = document.createElement("span");
-      nimi.className = "valintarivi-paikka";
-      nimi.textContent = paikka.nimi;
-      rivi.appendChild(nimi);
-
-      if (itemId) {
-        const t = d.tiedot[itemId] || d.tiedot[String(itemId)] || null;
-
-        const kaari = document.createElement("span");
-        kaari.className = "item";
-
-        const ikoni = document.createElement("span");
-        ikoni.className = "item-ikoni";
-        if (t && t.icon) {
-          const img = document.createElement("img");
-          img.src = IKONI + t.icon + ".jpg";
-          img.alt = "";
-          img.loading = "lazy";
-          ikoni.appendChild(img);
-        }
-
-        const teksti = document.createElement("span");
-        teksti.className = "item-teksti";
-
-        const itemNimi = document.createElement("span");
-        itemNimi.className = "item-nimi q" + (t && t.quality != null ? t.quality : 1);
-        itemNimi.textContent = t && t.name ? t.name : "item " + itemId;
-
-        const id = document.createElement("span");
-        id.className = "item-id";
-        id.textContent = itemId;
-
-        teksti.appendChild(itemNimi);
-        teksti.appendChild(id);
-        kaari.appendChild(ikoni);
-        kaari.appendChild(teksti);
-        rivi.appendChild(kaari);
-      } else {
-        const tyhja = document.createElement("span");
-        tyhja.className = "tyhja-teksti";
-        tyhja.textContent = "— ei valintaa —";
-        rivi.appendChild(tyhja);
-      }
-
-      lista.appendChild(rivi);
-    }
-
-    const yhteenveto = document.createElement("p");
-    yhteenveto.className = "himmea pieni-teksti";
-    yhteenveto.style.marginTop = ".75rem";
-    yhteenveto.textContent =
-      `${valittuja} / ${d.paikat.length} valittu · ${d.raid.name}` +
-      (d.user.locked ? " · profiili lukittu" : "");
-    lista.appendChild(yhteenveto);
-  } catch (err) {
-    lista.innerHTML = `<p class="himmea">Virhe: ${err && err.message ? err.message : err}</p>`;
-  }
+function merkitseOtsikko() {
+  document.querySelectorAll("th[data-lajittele]").forEach((th) => {
+    const oma = th.dataset.lajittele === lajitteluKentta;
+    th.classList.toggle("lajiteltu", oma);
+    th.dataset.suunta = oma ? (lajitteluNouseva ? "ylos" : "alas") : "";
+  });
 }
 
-$("valinnat-sulje").addEventListener("click", () => {
-  $("valinnat-peite").hidden = true;
-});
-$("valinnat-peite").addEventListener("click", (e) => {
-  if (e.target === $("valinnat-peite")) $("valinnat-peite").hidden = true;
-});
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") $("valinnat-peite").hidden = true;
+document.querySelectorAll("th[data-lajittele]").forEach((th) => {
+  th.addEventListener("click", () => {
+    const kentta = th.dataset.lajittele;
+
+    // Sama otsikko toistamiseen kaantaa suunnan, uusi aloittaa nousevasta.
+    if (kentta === lajitteluKentta) {
+      lajitteluNouseva = !lajitteluNouseva;
+    } else {
+      lajitteluKentta = kentta;
+      lajitteluNouseva = true;
+    }
+
+    piirra(jarjesta(kaikki));
+    merkitseOtsikko();
+  });
 });
 
 /* ---------- jäsenten luonti ja poisto ---------- */
@@ -542,7 +520,10 @@ $("ulos").addEventListener("click", async () => {
 
 // Luontilomakkeen valitsimet taytetaan samasta lahteesta kuin taulukon,
 // jottei listoja ole kahta eri paikassa.
-taytaValitsin($("u-luokka"), LUOKKAPARIT, "", "— luokka —");
+taytaValitsin($("u-luokka"), LUOKKAPARIT, "", "— luokka —", luokanVari);
 taytaValitsin($("u-raidirooli"), ROOLIPARIT, "", "— rooli —");
+$("u-luokka").addEventListener("change", () => {
+  $("u-luokka").style.color = luokanVari($("u-luokka").value);
+});
 
 lataa();

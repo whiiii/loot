@@ -16,11 +16,17 @@ const $ = (id) => document.getElementById(id);
 
 /* ---------- lataus ---------- */
 
+// Officer voi avata toisen profiilin osoitteella /profiili?katso=tunnus.
+const katsottava = new URLSearchParams(location.search).get("katso") || "";
+
 async function lataa() {
   try {
+    const nakymaOsoite =
+      "/api/nakyma" + (katsottava ? "?username=" + encodeURIComponent(katsottava) : "");
+
     const [mina, nakyma] = await Promise.all([
       fetch("/api/mina").then((r) => r.json()),
-      fetch("/api/nakyma").then((r) => r.json()),
+      fetch(nakymaOsoite).then((r) => r.json()),
     ]);
 
     if (!mina.ok) {
@@ -28,9 +34,14 @@ async function lataa() {
       return;
     }
 
+    if (!nakyma.ok) {
+      naytaViesti(nakyma.error || "Tietojen haku epäonnistui.");
+      return;
+    }
+
     // Nakyvissa on hahmon nimi, ei kirjautumistunnus. Raidissa katsotaan
     // hahmoa, ja tunnus on vain tapa paasta sisaan.
-    const u = mina.user;
+    const u = nakyma.user || mina.user;
     const nimi = $("nimi");
     nimi.textContent = hahmonNimi(u);
     nimi.style.color = luokanVari(u.class);
@@ -42,18 +53,25 @@ async function lataa() {
     if (RAIDIROOLIT[u.raid_role]) osat.push(RAIDIROOLIT[u.raid_role]);
     $("rooli").textContent = osat.join(" · ");
 
-    tila.rooli = u.role;
+    tila.rooli = mina.user.role;
+    tila.katselu = nakyma.omaProfiili === false;
 
-    // Lukko ei rajoita officeria, joten hanelle se ei ole "lukittu" tila
-    // vaan pelkka merkinta.
-    tila.lukittu = !!mina.user.locked && mina.user.role !== "officer";
-    $("lukkoilmoitus").hidden = !tila.lukittu;
-    $("yllapitolinkki").hidden = mina.user.role !== "officer";
-    $("tallenna").hidden = tila.lukittu;
-
-    if (!nakyma.ok) {
-      naytaViesti(nakyma.error || "Tietojen haku epäonnistui.");
-      return;
+    // Toisen profiili on katseltava, ei muokattava. Muokkaus kuuluu sille
+    // jonka profiili se on - officer avaa lukon, raideri valitsee itse.
+    if (tila.katselu) {
+      tila.lukittu = true;
+      $("katseluilmoitus").hidden = false;
+      $("katseltava").textContent = hahmonNimi(u);
+      $("lukkoilmoitus").hidden = true;
+      $("tallenna").hidden = true;
+      $("yllapitolinkki").hidden = false;
+    } else {
+      // Lukko ei rajoita officeria, joten hanelle se ei ole "lukittu" tila
+      // vaan pelkka merkinta.
+      tila.lukittu = !!mina.user.locked && mina.user.role !== "officer";
+      $("lukkoilmoitus").hidden = !tila.lukittu;
+      $("yllapitolinkki").hidden = mina.user.role !== "officer";
+      $("tallenna").hidden = tila.lukittu;
     }
 
     tila.raid = nakyma.raid;
@@ -154,6 +172,7 @@ function piirraPaikat() {
 /* ---------- valitsin ---------- */
 
 function avaaValitsin(paikka) {
+  if (tila.katselu) { return; }
   if (tila.lukittu) { naytaViesti("Profiili on lukittu."); return; }
   if (!tila.raid)   { naytaViesti("Aktiivista raidia ei ole."); return; }
 
