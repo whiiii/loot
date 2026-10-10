@@ -172,54 +172,88 @@ end
 
 local function piirraLoot()
   local kehys = nakymat.loot
+
   if not kehys.vieritys then
     kehys.vieritys = teeVieritys(kehys, "LootPrioLootScroll")
+    kehys.vieritys:SetPoint("BOTTOMRIGHT", -26, 28)
+
+    kehys.lopeta = nappi(kehys, 120, 22, "Päätä jako", function()
+      NS.PaataSessio()
+    end)
+    kehys.lopeta:SetPoint("BOTTOMLEFT", 0, 2)
   end
 
   local sisalto = kehys.vieritys.sisalto
   tyhjenna(sisalto)
   sisalto:SetWidth(kehys:GetWidth() - 26)
 
-  local y = -4
+  local sessio = NS.sessio
+  kehys.lopeta:SetShown(sessio ~= nil)
 
-  if #NS.istunto.lootit == 0 then
-    lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
-    local fs = teksti(sisalto, "GameFontDisableSmall", 4, y,
-      "Ei loottia. Ikkuna aukeaa itsestään kun loottiruutu avautuu,\n"
+  if not sessio then
+    local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
+    rivi:SetPoint("TOPLEFT", 0, -4)
+    teksti(rivi, "GameFontDisableSmall", 4, 0,
+      "Ei jakoa käynnissä.\n\nJako alkaa itsestään kun loottiruutu avautuu,\n"
       .. "tai kokeile Asetukset → Käynnistä testi.")
-    sisalto.lapset[#sisalto.lapset].fs = fs
-    sisalto:SetHeight(60)
+    sisalto:SetHeight(80)
     return
   end
 
-  for _, loot in ipairs(NS.istunto.lootit) do
+  local y = -4
+
+  for _, item in ipairs(sessio.itemit) do
     local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
     rivi:SetPoint("TOPLEFT", 0, y)
     rivi:SetPoint("TOPRIGHT", 0, y)
 
     teksti(rivi, "GameFontNormal", 4, 0,
-      varilla(loot.laatu, loot.nimi) .. (loot.jaettu and ("  " .. HIMMEA .. "(jaettu)|r") or ""))
+      varilla(item.laatu, item.nimi)
+      .. (item.jaettu and ("  " .. HIMMEA .. "(jaettu)|r") or ""))
 
     local korkeus = 20
+    local vastaukset = NS.ItemienVastaukset(item)
 
-    if #loot.rollit == 0 then
-      teksti(rivi, "GameFontDisableSmall", 16, -korkeus, "ei kenenkään profiilissa")
+    if #vastaukset == 0 then
+      teksti(rivi, "GameFontDisableSmall", 16, -korkeus, "ei vastauksia vielä")
       korkeus = korkeus + 18
     else
-      for _, r in ipairs(loot.rollit) do
-        teksti(rivi, "GameFontHighlightSmall", 16, -korkeus,
-          ("%s%3d|r  %s  %s%s|r"):format(KULTA, r.luku, r.nimi, HIMMEA, r.paikka))
+      for _, v in ipairs(vastaukset) do
+        local vast = NS.VASTAUS[v.koodi]
 
-        -- Jako tehdaan nimenomaan napin painalluksesta: peli vaatii
-        -- laitteistotapahtuman eika hyvaksy kutsua muualta.
-        local b = nappi(rivi, 76, 18, "Assign", function()
-          if NS.Jaa(loot, r.nimi) then NS.PaivitaNakyma("loot") end
-        end)
-        b:SetPoint("TOPRIGHT", -8, -korkeus + 2)
-        b:SetEnabled(not loot.jaettu)
+        -- Vaarin perusteltu prio merkitaan. Vastaus tulee pelaajan omalta
+        -- koneelta, mutta lootmasterilla on kaikkien profiilit - joten
+        -- vaite on tarkistettavissa.
+        local huomio = ""
+        if v.koodi == "prio" and not v.prioOk then
+          huomio = VIRHE .. " (ei profiilissa!)|r"
+        end
+
+        teksti(rivi, "GameFontHighlightSmall", 16, -korkeus,
+          ("%s%-10s|r %s%3s|r  %s%s"):format(
+            vast.vari, vast.nimi,
+            KULTA, v.luku and tostring(v.luku) or "—",
+            v.nimi, huomio))
+
+        if v.koodi ~= "pass" then
+          local b = nappi(rivi, 76, 18, "Assign", function()
+            NS.Jaa(item, v.nimi)
+          end)
+          b:SetPoint("TOPRIGHT", -8, -korkeus + 2)
+          b:SetEnabled(not item.jaettu)
+        end
 
         korkeus = korkeus + 20
       end
+    end
+
+    local puuttuu = NS.Vastaamatta(item)
+    if #puuttuu > 0 then
+      teksti(rivi, "GameFontDisableSmall", 16, -korkeus,
+        ("odottaa: %d (%s%s)"):format(#puuttuu,
+          table.concat(puuttuu, ", ", 1, math.min(4, #puuttuu)),
+          #puuttuu > 4 and ", …" or ""))
+      korkeus = korkeus + 16
     end
 
     rivi:SetHeight(korkeus + 6)
@@ -471,6 +505,124 @@ function NS.AvaaLootIkkuna() NS.Avaa("loot") end
 function NS.AvaaTuonti() NS.Avaa("tuonti") end
 function NS.PaivitaLootIkkuna() NS.PaivitaNakyma("loot") end
 function NS.PaivitaAsetusUI() NS.PaivitaNakyma(nykyinen) end
+
+--------------------------------------------------------------------------
+-- Raiderin vastausikkuna
+--------------------------------------------------------------------------
+
+local vastausIkkuna
+
+--- Itemin nimi ja laatu id:n perusteella.
+---
+--- Peli ei valttamatta tunne itemia heti: tiedot saapuvat omana
+--- tapahtumanaan, jolloin ikkuna piirretaan uudelleen.
+local function itemTiedot(itemId)
+  local nimi, _, laatu = GetItemInfo(itemId)
+  return nimi or ("item " .. itemId), laatu or 1
+end
+
+function NS.AvaaVastausIkkuna()
+  if not NS.omaSessio then return end
+
+  if not vastausIkkuna then
+    vastausIkkuna = CreateFrame("Frame", "LootPrioVastaus", UIParent,
+      "BasicFrameTemplateWithInset")
+    vastausIkkuna:SetSize(430, 330)
+    vastausIkkuna:SetPoint("CENTER", 0, 120)
+    vastausIkkuna:SetMovable(true)
+    vastausIkkuna:EnableMouse(true)
+    vastausIkkuna:RegisterForDrag("LeftButton")
+    vastausIkkuna:SetScript("OnDragStart", vastausIkkuna.StartMoving)
+    vastausIkkuna:SetScript("OnDragStop", vastausIkkuna.StopMovingOrSizing)
+    vastausIkkuna:SetClampedToScreen(true)
+    vastausIkkuna.TitleText:SetText("LootPrio — vastaa")
+    tinsert(UISpecialFrames, "LootPrioVastaus")
+
+    local vieritys = teeVieritys(vastausIkkuna, "LootPrioVastausScroll")
+    vieritys:SetPoint("TOPLEFT", 12, -32)
+    vieritys:SetPoint("BOTTOMRIGHT", -32, 12)
+    vastausIkkuna.vieritys = vieritys
+  end
+
+  vastausIkkuna:Show()
+  NS.PaivitaVastausIkkuna()
+end
+
+function NS.SuljeVastausIkkuna()
+  if vastausIkkuna then vastausIkkuna:Hide() end
+end
+
+function NS.PaivitaVastausIkkuna()
+  if not vastausIkkuna or not vastausIkkuna:IsShown() then return end
+  if not NS.omaSessio then return end
+
+  local sisalto = vastausIkkuna.vieritys.sisalto
+  tyhjenna(sisalto)
+  sisalto:SetWidth(370)
+
+  local y = -4
+  local indeksit = {}
+  for indeksi in pairs(NS.omaSessio.itemit) do indeksit[#indeksit + 1] = indeksi end
+  table.sort(indeksit)
+
+  for _, indeksi in ipairs(indeksit) do
+    local item = NS.omaSessio.itemit[indeksi]
+    local nimi, laatu = itemTiedot(item.itemId)
+
+    local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
+    rivi:SetPoint("TOPLEFT", 0, y)
+    rivi:SetPoint("TOPRIGHT", 0, y)
+
+    teksti(rivi, "GameFontNormal", 4, 0, varilla(laatu, nimi))
+
+    local valittu = NS.omaSessio.vastattu[indeksi]
+    local x = 4
+
+    for _, v in ipairs(NS.VASTAUKSET) do
+      -- LootPrio vain jos item on oikeasti omassa profiilissa. Sivusto on
+      -- se joka ratkaisee, ei pelaajan oma arvio.
+      local sallittu = (v.koodi ~= "prio") or NS.OmassaProfiilissa(item.itemId)
+
+      local b = nappi(rivi, v.koodi == "pass" and 54 or 72, 20, v.nimi, function()
+        NS.Vastaa(indeksi, v.koodi)
+      end)
+      b:SetPoint("TOPLEFT", x, -22)
+      b:SetEnabled(sallittu and not valittu)
+
+      if valittu == v.koodi then b:LockHighlight() end
+
+      if not sallittu then
+        b:SetScript("OnEnter", function(self)
+          GameTooltip:SetOwner(self, "ANCHOR_TOP")
+          GameTooltip:AddLine("Tämä item ei ole profiilissasi sivustolla.", 1, .6, .6)
+          GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+      end
+
+      x = x + (v.koodi == "pass" and 58 or 76)
+    end
+
+    if valittu then
+      teksti(rivi, "GameFontDisableSmall", 4, -46,
+        "Vastattu: " .. (NS.VASTAUS[valittu] and NS.VASTAUS[valittu].nimi or valittu))
+      rivi:SetHeight(66)
+      y = y - 70
+    else
+      rivi:SetHeight(48)
+      y = y - 52
+    end
+  end
+
+  sisalto:SetHeight(math.max(1, -y))
+end
+
+-- Itemin tiedot voivat saapua vasta ikkunan avaamisen jalkeen.
+local itemKehys = CreateFrame("Frame")
+itemKehys:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+itemKehys:SetScript("OnEvent", function()
+  if NS.PaivitaVastausIkkuna then NS.PaivitaVastausIkkuna() end
+end)
 
 --------------------------------------------------------------------------
 -- Minimap-nappi

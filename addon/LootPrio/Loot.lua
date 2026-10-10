@@ -1,42 +1,19 @@
 --[[
-  LootPrio — lootin kasittely.
+  LootPrio — loottiruutu ja jako.
 
-  Kun loottiruutu aukeaa, jokaisesta itemista katsotaan ketka ovat
-  varanneet sen profiilissaan. Jos halukkaita on, addon arpoo jokaiselle
-  luvun 1-100 ja lootmaster nakee listan suurimmasta pienimpaan.
+  Kun loottiruutu aukeaa, lootmaster avaa jakosession kaikista itemeista.
+  Raidilaisten ruudulle tulee vastausikkuna, ja vastaukset kertyvat
+  lootmasterin listaan.
 
-  Arvonta tehdaan lootmasterin koneella ja lahetetaan muille sellaisenaan.
-  Jos jokainen arpoisi itse, numerot eivat tasmaisi kenenkaan kesken.
+  Kaikki itemit menevat jakoon, eivat vain profiileissa olevat: profiili
+  on yksi peruste nelijasta, ei paasyvaatimus.
 ]]
 
 local ADDON, NS = ...
 
--- Nykyinen istunto: kaikki avoinna olevat lootit kerralla.
-NS.istunto = { lootit = {}, avoin = false }
+NS.istunto = { lootit = {} }
 
---- Arpoo luvut halukkaille.
-local function arvoRollit(halukkaat)
-  local tulos = {}
-
-  for _, h in ipairs(halukkaat) do
-    tulos[#tulos + 1] = {
-      nimi = h.nimi,
-      paikka = h.paikka,
-      luku = math.random(1, 100),
-    }
-  end
-
-  -- Suurin ensin. Tasapelissa nimi ratkaisee, jotta jarjestys on vakaa
-  -- eika vaihtele piirrosta toiseen.
-  table.sort(tulos, function(a, b)
-    if a.luku == b.luku then return a.nimi < b.nimi end
-    return a.luku > b.luku
-  end)
-
-  return tulos
-end
-
---- Lukee loottiruudun sisallon ja rakentaa istunnon.
+--- Lukee loottiruudun sisallon.
 function NS.LueLootit()
   local lootit = {}
   local maara = GetNumLootItems() or 0
@@ -46,42 +23,19 @@ function NS.LueLootit()
     local itemId = NS.ItemIdLinkista(linkki)
 
     if itemId then
-      local _, nimi, maaraKpl, _, laatu = GetLootSlotInfo(slot)
-      local halukkaat = NS.KukaHaluaaPaikalla(itemId)
-
+      local _, nimi, _, _, laatu = GetLootSlotInfo(slot)
       lootit[#lootit + 1] = {
         slot = slot,
         itemId = itemId,
         linkki = linkki,
         nimi = nimi,
         laatu = laatu,
-        maara = maaraKpl,
-        halukkaat = halukkaat,
-        rollit = (#halukkaat > 0) and arvoRollit(halukkaat) or {},
-        jaettu = false,
       }
     end
   end
 
   NS.istunto.lootit = lootit
-  NS.istunto.avoin = true
   return lootit
-end
-
---- Lahettaa arvonnat raidille asetuksen mukaan.
----
---- "officers" tarkoittaa etta numeroita ei lahetetä lainkaan: raidikanava
---- menee kaikille, eika addonviestia voi rajata osalle. Officerit nakevat
---- numerot omasta ikkunastaan, koska he ajavat samaa addonia.
-function NS.JaaRollit()
-  if NS.db.rollienNakyvyys ~= "raid" then return end
-  if not NS.OnLootMaster() then return end
-
-  for _, loot in ipairs(NS.istunto.lootit) do
-    if #loot.rollit > 0 then
-      NS.Comm.LahetaRollit(loot.itemId, loot.rollit)
-    end
-  end
 end
 
 --- Etsii master loot -ehdokkaan indeksin nimen perusteella.
@@ -101,21 +55,19 @@ end
 
 --- Antaa lootin pelaajalle.
 ---
---- Kutsu on tehtava napin painalluksesta. Peli vaatii monelta lootin
+--- Kutsu on tehtava napin painalluksesta: peli vaatii monelta lootin
 --- jakoon liittyvalta toiminnolta laitteistotapahtuman, eika ajastimesta
 --- tai viestista laukaistu kutsu mene lapi.
-function NS.Jaa(loot, nimi)
-  local luku
-  for _, r in ipairs(loot.rollit) do
-    if r.nimi == nimi then luku = r.luku break end
-  end
+function NS.Jaa(item, nimi)
+  local vastaus = item.vastaukset and item.vastaukset[nimi]
+  local luku = vastaus and vastaus.luku
+  local koodi = vastaus and vastaus.koodi
 
-  -- Testitilassa peliin ei koskettu lainkaan: kirjataan vain historia,
-  -- jotta koko ketjun voi kayda lapi ilman raidia.
-  if loot.testi then
-    loot.jaettu = true
-    NS.LisaaHistoriaan(loot.itemId, nimi, luku)
-    NS.Tulosta(("TESTI: %s -> %s"):format(loot.nimi or loot.itemId, nimi))
+  if item.testi then
+    item.jaettu = true
+    NS.LisaaHistoriaan(item.itemId, nimi, luku)
+    NS.Tulosta(("TESTI: %s -> %s"):format(item.nimi or item.itemId, nimi))
+    if NS.PaivitaNakyma then NS.PaivitaNakyma("loot") end
     return true
   end
 
@@ -124,42 +76,46 @@ function NS.Jaa(loot, nimi)
     return false
   end
 
-  local indeksi = ehdokkaanIndeksi(loot.slot, nimi)
+  local indeksi = ehdokkaanIndeksi(item.slot, nimi)
   if not indeksi then
     NS.Tulosta(("%s ei ole ehdokkaana talle itemille (liian kaukana tai eri instanssissa?)"):format(nimi))
     return false
   end
 
-  GiveMasterLoot(loot.slot, indeksi)
-  loot.jaettu = true
+  GiveMasterLoot(item.slot, indeksi)
+  item.jaettu = true
 
-  -- Historia kirjataan vasta kun jako on oikeasti tehty, jottei siihen
-  -- paady itemeita joita kukaan ei saanut.
-  NS.LisaaHistoriaan(loot.itemId, nimi, luku)
+  -- Historia kirjataan vasta kun jako on tehty, jottei siihen paady
+  -- itemeita joita kukaan ei saanut.
+  NS.LisaaHistoriaan(item.itemId, nimi, luku)
 
   if NS.db.ilmoitaVoittaja then
-    local viesti = ("%s -> %s%s"):format(
-      loot.linkki or loot.nimi or "?",
+    local peruste = koodi and NS.VASTAUS[koodi] and NS.VASTAUS[koodi].nimi
+    local viesti = ("%s -> %s%s%s"):format(
+      item.linkki or item.nimi or "?",
       nimi,
-      luku and (" (roll " .. luku .. ")") or ""
+      peruste and (" (" .. peruste) or "",
+      peruste and (luku and (", roll " .. luku .. ")") or ")") or ""
     )
-
     SendChatMessage("LootPrio: " .. viesti, IsInRaid() and "RAID" or "PARTY")
   end
 
+  if NS.PaivitaNakyma then NS.PaivitaNakyma("loot") end
   return true
 end
 
---- Rakentaa testi-istunnon tuoduista profiileista.
----
---- Itemit poimitaan oikeista valinnoista, jotta halukkaita loytyy ja koko
---- nakyma kayttaytyy kuten oikeassa raidissa. Mitaan ei anneta kenellekaan
---- eika pelin loottiin kosketa.
-function NS.AloitaTesti()
-  local kpl = 0
-  for _ in pairs(NS.db.profiilit) do kpl = kpl + 1 end
+--------------------------------------------------------------------------
+-- Testitila
+--------------------------------------------------------------------------
 
-  if kpl == 0 then
+--- Rakentaa testisession tuoduista profiileista.
+---
+--- Itemit poimitaan oikeista valinnoista ja vastaukset arvotaan, jotta
+--- koko nakyma kayttaytyy kuten oikeassa raidissa. Mitaan ei anneta
+--- kenellekaan eika pelin loottiin kosketa.
+function NS.AloitaTesti()
+  local jasenet = NS.Jasenet()
+  if #jasenet == 0 then
     NS.Tulosta("tuo ensin profiilit, muuten testissa ei ole ketaan.")
     return false
   end
@@ -184,9 +140,6 @@ function NS.AloitaTesti()
   local lootit = {}
   for i = 1, math.min(3, #jarjestys) do
     local itemId = jarjestys[i].itemId
-
-    -- Testissa kelpaavat kaikki varanneet, myos ne jotka eivat ole paikalla.
-    local halukkaat = NS.KukaHaluaa(itemId)
     local nimi, linkki, laatu = GetItemInfo(itemId)
 
     lootit[#lootit + 1] = {
@@ -195,56 +148,94 @@ function NS.AloitaTesti()
       linkki = linkki,
       nimi = (nimi or ("item " .. itemId)) .. " |cff8b9299[testi]|r",
       laatu = laatu or 4,
-      maara = 1,
-      halukkaat = halukkaat,
-      rollit = arvoRollit(halukkaat),
-      jaettu = false,
       testi = true,
     }
   end
 
-  NS.istunto.lootit = lootit
-  NS.istunto.avoin = true
-  NS.istunto.testi = true
+  if #lootit == 0 then
+    NS.Tulosta("tuoduissa profiileissa ei ole yhtaan itemia.")
+    return false
+  end
 
-  NS.Tulosta(("testi-istunto: %d itemia."):format(#lootit))
+  -- Sessio avataan ilman lahetysta: testissa ei ole ketaan jolle lahettaa.
+  NS.sessio = {
+    id = "TESTI",
+    alkoi = GetTime(),
+    testi = true,
+    itemit = {},
+  }
+
+  for i, loot in ipairs(lootit) do
+    NS.sessio.itemit[i] = {
+      indeksi = i,
+      slot = loot.slot,
+      itemId = loot.itemId,
+      linkki = loot.linkki,
+      nimi = loot.nimi,
+      laatu = loot.laatu,
+      testi = true,
+      jaettu = false,
+      vastaukset = {},
+    }
+  end
+
+  -- Arvotaan vastauksia: varanneet vastaavat LootPrio, muutama muu
+  -- jollakin toisella perusteella.
+  local koodit = { "main", "off", "muu", "pass" }
+
+  for _, item in ipairs(NS.sessio.itemit) do
+    for _, j in ipairs(jasenet) do
+      local valinnat = NS.db.profiilit[j.nimi]
+      local haluaa = false
+      if valinnat then
+        for _, id in pairs(valinnat) do
+          if id == item.itemId then haluaa = true break end
+        end
+      end
+
+      if haluaa then
+        item.vastaukset[j.nimi] = { koodi = "prio", luku = math.random(1, 100), prioOk = true }
+      elseif math.random(1, 3) == 1 then
+        local koodi = koodit[math.random(1, #koodit)]
+        item.vastaukset[j.nimi] = {
+          koodi = koodi,
+          luku = (koodi ~= "pass") and math.random(1, 100) or nil,
+          prioOk = false,
+        }
+      end
+    end
+  end
+
+  NS.Tulosta(("testisessio: %d itemia, vastaukset arvottu."):format(#NS.sessio.itemit))
   return true
 end
 
--- Tapahtumat ---------------------------------------------------------------
+--------------------------------------------------------------------------
+-- Tapahtumat
+--------------------------------------------------------------------------
 
 local kehys = CreateFrame("Frame")
 kehys:RegisterEvent("LOOT_OPENED")
-kehys:RegisterEvent("LOOT_CLOSED")
 kehys:RegisterEvent("LOOT_SLOT_CLEARED")
 
 kehys:SetScript("OnEvent", function(_, tapahtuma, arg1)
   if tapahtuma == "LOOT_OPENED" then
-    -- Vain lootmasterille on mitaan naytettavaa: muut eivat voi jakaa.
+    -- Vain lootmasterille on mitaan tehtavaa: muut eivat voi jakaa.
     if not NS.OnLootMaster() then return end
 
     local lootit = NS.LueLootit()
+    if #lootit == 0 then return end
 
-    local kiinnostavia = 0
-    for _, l in ipairs(lootit) do
-      if #l.halukkaat > 0 then kiinnostavia = kiinnostavia + 1 end
-    end
-
-    if kiinnostavia > 0 then
-      NS.JaaRollit()
-      if NS.AvaaLootIkkuna then NS.AvaaLootIkkuna() end
+    if NS.AvaaSessio(lootit) then
+      NS.Avaa("loot")
     end
 
   elseif tapahtuma == "LOOT_SLOT_CLEARED" then
-    for _, l in ipairs(NS.istunto.lootit) do
-      if l.slot == arg1 then l.jaettu = true end
+    if NS.sessio then
+      for _, item in ipairs(NS.sessio.itemit) do
+        if item.slot == arg1 then item.jaettu = true end
+      end
+      if NS.PaivitaNakyma then NS.PaivitaNakyma("loot") end
     end
-    if NS.PaivitaLootIkkuna then NS.PaivitaLootIkkuna() end
-
-  elseif tapahtuma == "LOOT_CLOSED" then
-    NS.istunto.avoin = false
-    -- Ikkuna jatetaan auki tarkoituksella: lootmaster haluaa usein katsoa
-    -- numeroita viela sen jalkeen kun ruutu on sulkeutunut.
-    if NS.PaivitaLootIkkuna then NS.PaivitaLootIkkuna() end
   end
 end)
