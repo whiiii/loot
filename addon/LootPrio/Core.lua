@@ -28,6 +28,13 @@ local OLETUKSET = {
   -- Tuonnin tiedot, jotta nakee milloin data on peraisin.
   raidinNimi = nil,
   tuotu = nil,
+
+  -- Jaettu loot. Lista rivia { itemId, nimi, aika, luku }.
+  -- Tasta tehdaan vienti sivustolle.
+  historia = {},
+
+  -- Minimap-napin kulma asteina. Sijainti sailyy istuntojen yli.
+  minimapKulma = 200,
 }
 
 local function taydenna(kohde, oletus)
@@ -132,7 +139,9 @@ kehys:SetScript("OnEvent", function(_, tapahtuma, nimi)
   local kpl = 0
   for _ in pairs(NS.db.profiilit) do kpl = kpl + 1 end
 
-  NS.Tulosta(("ladattu. Profiileja %d. Komennot: /lootprio"):format(kpl))
+  NS.Tulosta(("ladattu. Profiileja %d. Avaa ikkuna minimapin napista tai /lp"):format(kpl))
+
+  if NS.LuoMinimapNappi then NS.LuoMinimapNappi() end
 end)
 
 -- Komennot -----------------------------------------------------------------
@@ -144,41 +153,18 @@ SlashCmdList.LOOTPRIO = function(syote)
   local komento, loput = syote:match("^(%S*)%s*(.-)$")
   komento = (komento or ""):lower()
 
-  if komento == "" or komento == "help" then
-    NS.Tulosta("komennot:")
-    print("  /lp tuo        — avaa tuonti-ikkunan")
-    print("  /lp lista      — nayta tuodut profiilit")
-    print("  /lp rollit raid|officers — kuka nakee arvonnat")
-    print("  /lp loot       — avaa lootti-ikkuna uudelleen")
-    print("  /lp tyhjenna   — poista tuodut profiilit")
-
-  elseif komento == "tuo" or komento == "import" then
-    NS.AvaaTuonti()
-
-  elseif komento == "lista" then
-    NS.TulostaProfiilit()
-
-  elseif komento == "rollit" then
-    local arvo = loput:lower()
-    if arvo == "raid" or arvo == "officers" then
-      NS.db.rollienNakyvyys = arvo
-      NS.Tulosta("arvonnat nakyvat nyt: " .. arvo)
-      if NS.PaivitaAsetusUI then NS.PaivitaAsetusUI() end
-    else
-      NS.Tulosta("kayta: /lp rollit raid  tai  /lp rollit officers")
-      NS.Tulosta("nyt: " .. NS.db.rollienNakyvyys)
-    end
-
+  -- Komennot ovat oikotie, eivat ainoa tie: kaikki loytyy ikkunan napeista.
+  if komento == "" then
+    NS.Avaa()
   elseif komento == "loot" then
-    if NS.AvaaLootIkkuna then NS.AvaaLootIkkuna() end
-
-  elseif komento == "tyhjenna" then
-    NS.db.profiilit = {}
-    NS.db.raidinNimi = nil
-    NS.db.tuotu = nil
-    NS.Tulosta("profiilit poistettu.")
-
+    NS.Avaa("loot")
+  elseif komento == "tuo" or komento == "import" then
+    NS.Avaa("tuonti")
+  elseif komento == "jasenet" then
+    NS.Avaa("jasenet")
+  elseif komento == "historia" then
+    NS.Avaa("historia")
   else
-    NS.Tulosta("tuntematon komento. /lp help")
+    NS.Tulosta("kayta: /lp  (avaa ikkunan)")
   end
 end

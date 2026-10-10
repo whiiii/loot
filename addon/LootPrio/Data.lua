@@ -114,6 +114,61 @@ function NS.KukaHaluaaPaikalla(itemId)
   return tulos
 end
 
+--- Tuodut hahmot aakkosjarjestyksessa, valintojen maaran kanssa.
+function NS.Jasenet()
+  local lista = {}
+
+  for hahmo, valinnat in pairs(NS.db.profiilit) do
+    local n = 0
+    for _ in pairs(valinnat) do n = n + 1 end
+    lista[#lista + 1] = { nimi = hahmo, valintoja = n }
+  end
+
+  table.sort(lista, function(a, b) return a.nimi < b.nimi end)
+  return lista
+end
+
+--- Montako itemia kyseinen hahmo on jo saanut taman datan aikana.
+function NS.SaatuMaara(hahmo)
+  local n = 0
+  for _, rivi in ipairs(NS.db.historia) do
+    if rivi.nimi == hahmo then n = n + 1 end
+  end
+  return n
+end
+
+--- Kirjaa jaetun lootin historiaan.
+---
+--- Aikaleima talletetaan tekstina samassa muodossa kuin sivusto kayttaa,
+--- jotta tuonti ei joudu arvailemaan muotoa.
+function NS.LisaaHistoriaan(itemId, nimi, luku)
+  NS.db.historia[#NS.db.historia + 1] = {
+    itemId = itemId,
+    nimi = nimi,
+    luku = luku,
+    aika = date("%Y-%m-%d %H:%M:%S"),
+    raidi = NS.db.raidinNimi,
+  }
+end
+
+--- Historia tekstina sivustolle vietavaksi.
+---
+--- Sama rivipohjainen muoto kuin tuonnissa, vastakkaiseen suuntaan.
+function NS.HistoriaTeksti()
+  local rivit = {
+    "LOOTHIST1",
+    "RAID=" .. (NS.db.raidinNimi or "?"),
+    "TIME=" .. date("%Y-%m-%d %H:%M:%S"),
+  }
+
+  for _, r in ipairs(NS.db.historia) do
+    rivit[#rivit + 1] = ("L=%d|%s|%s|%s"):format(
+      r.itemId, r.nimi, r.aika, r.luku and tostring(r.luku) or "-")
+  end
+
+  return table.concat(rivit, "\n")
+end
+
 function NS.TulostaProfiilit()
   local kpl = 0
   for _ in pairs(NS.db.profiilit) do kpl = kpl + 1 end

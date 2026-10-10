@@ -535,6 +535,43 @@ $("luo-vienti").addEventListener("click", async () => {
   }
 });
 
+$("tuo-historia").addEventListener("click", async () => {
+  const teksti = $("historia").value.trim();
+  if (!teksti) {
+    naytaViesti("Liitä ensin addonin vienti.");
+    return;
+  }
+
+  try {
+    const d = await fetch("/api/historia", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ teksti }),
+    }).then((r) => r.json());
+
+    if (!d.ok) {
+      naytaViesti(d.error || "Tuonti epäonnistui.");
+      return;
+    }
+
+    // Kerrotaan myos se mita EI tunnistettu. Nimi joka ei vastaa ketaan
+    // kirjautuu historiaan mutta ei nay kenenkaan profiilissa, ja se on
+    // juuri se tapaus joka jaisi muuten huomaamatta.
+    const osat = [`${d.uusia} uutta riviä (${d.rivit} yhteensä)`];
+    if (d.tunnistamattomia > 0) {
+      osat.push(`${d.tunnistamattomia} nimeä ei vastaa ketään jäsentä`);
+    }
+    if (d.ohitettu > 0) osat.push(`${d.ohitettu} riviä ohitettu`);
+
+    $("tuontitiedot").textContent = osat.join(" · ");
+    $("historia").value = "";
+    naytaViesti("Loottihistoria tuotu.");
+    lataa();
+  } catch (err) {
+    naytaViesti("Virhe: " + (err && err.message ? err.message : String(err)));
+  }
+});
+
 $("kopioi").addEventListener("click", async () => {
   const ta = $("vienti");
   try {

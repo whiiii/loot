@@ -201,6 +201,18 @@ a.linkkinappi[hidden] { display: none; }
   letter-spacing: .02em;
 }
 
+/* Saatu item.
+   Merkki eika pelkka himmennys: himmea rivi lukee "ei valittu", ja tama on
+   painvastoin se rivi jossa on onnistuttu. */
+.saatu-merkki {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  margin-left: .35rem;
+  color: var(--ok);
+}
+.item.saatu .item-nimi { opacity: .8; }
+
 /* Pelin laatuvarit. */
 .q0 { color: #9d9d9d; }
 .q1 { color: #ffffff; }

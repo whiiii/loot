@@ -9,7 +9,10 @@
 
 const IKONI = "https://wow.zamimg.com/images/wow/icons/large/";
 
-let tila = { raid: null, paikat: [], items: [], picks: {}, tiedot: {}, lukittu: false };
+let tila = {
+  raid: null, paikat: [], items: [], picks: {}, tiedot: {},
+  saadut: new Set(), lukittu: false,
+};
 let avoinPaikka = null;
 
 const $ = (id) => document.getElementById(id);
@@ -79,6 +82,7 @@ async function lataa() {
     tila.items = nakyma.items ?? [];
     tila.picks = nakyma.picks ?? {};
     tila.tiedot = nakyma.tiedot ?? {};
+    tila.saadut = new Set(nakyma.saadut ?? []);
 
     $("raidi").textContent = tila.raid ? tila.raid.name : "Ei aktiivista raidia";
     piirraPaikat();
@@ -131,6 +135,23 @@ function itemElementti(itemId) {
 
   kaari.appendChild(ikoni);
   kaari.appendChild(teksti);
+
+  // Saatu item merkitaan. Tieto tulee addonista tuodusta loottihistoriasta,
+  // joten merkinta kertoo etta item on oikeasti jaettu raidissa - ei sita
+  // etta joku olisi kuitannut sen sivustolla.
+  if (tila.saadut.has(itemId)) {
+    kaari.classList.add("saatu");
+
+    const merkki = document.createElement("span");
+    merkki.className = "saatu-merkki";
+    merkki.title = "Saatu raidissa";
+    merkki.innerHTML =
+      '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+      'stroke="currentColor" stroke-width="3" stroke-linecap="round" ' +
+      'stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+    kaari.appendChild(merkki);
+  }
+
   return kaari;
 }
 

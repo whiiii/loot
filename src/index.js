@@ -30,6 +30,7 @@ import {
   paivitaHahmo,
   poistaKayttaja,
   teeVienti,
+  tuoHistoria,
   vaihdaRooli,
 } from "./yllapito.js";
 
@@ -250,6 +251,12 @@ async function rajapinta(request, env, polku) {
       String(username ?? ""),
       muutokset
     );
+    return json(tulos, tulos.error ? tulos.status : 200);
+  }
+
+  if (polku === "/api/historia" && request.method === "POST") {
+    const body = await lueJson(request);
+    const tulos = await tuoHistoria(env, kayttaja.username, String(body.teksti ?? ""));
     return json(tulos, tulos.error ? tulos.status : 200);
   }
 

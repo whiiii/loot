@@ -354,6 +354,99 @@ export async function paivitaHahmo(env, actor, username, muutokset) {
   };
 }
 
+/**
+ * Tuo addonin loottihistorian.
+ *
+ * Muoto on addonin vienti sellaisenaan:
+ *
+ *   LOOTHIST1
+ *   RAID=Molten Core
+ *   TIME=2026-10-10 20:05:00
+ *   L=<itemId>|<voittaja>|<aika>|<roll tai ->
+ *
+ * Tuonti on idempotentti: taulun UNIQUE estaa saman rivin kahdentumisen,
+ * joten saman viennin voi tuoda uudelleen. Se on olennaista, koska tuonti
+ * on kasityota eika kasityon toistumista voi estaa.
+ */
+export async function tuoHistoria(env, actor, teksti) {
+  if (typeof teksti !== "string" || !teksti.trim()) {
+    return { error: "Teksti puuttuu.", status: 400 };
+  }
+
+  const siisti = teksti.replace(/\r/g, "");
+  if (!/^\s*LOOTHIST1\b/.test(siisti)) {
+    return { error: "Tuntematon muoto. Odotettiin LOOTHIST1.", status: 400 };
+  }
+
+  const raidi = await haeAktiiviRaidi(env);
+  const raidId = raidi ? raidi.id : null;
+
+  // Kayttajat kerran muistiin, jottei jokaista rivia kohden tehda kyselya.
+  const kayttajat = await env.DB.prepare(
+    `SELECT id, username, character_name, first_name FROM users`
+  ).all();
+
+  const nimella = new Map();
+  for (const u of kayttajat.results ?? []) {
+    for (const nimi of [u.username, u.character_name, u.first_name]) {
+      if (nimi) nimella.set(String(nimi).toLowerCase(), u.id);
+    }
+  }
+
+  const rivit = [];
+  let ohitettu = 0;
+
+  for (const rivi of siisti.matchAll(/^L=([^\n]*)$/gm)) {
+    const osat = rivi[1].split("|");
+    const itemId = parseInt(osat[0], 10);
+    const voittaja = (osat[1] || "").trim();
+    const aika = (osat[2] || "").trim();
+
+    if (!Number.isFinite(itemId) || !voittaja || !aika) {
+      ohitettu++;
+      continue;
+    }
+
+    rivit.push({
+      itemId,
+      voittaja,
+      aika,
+      userId: nimella.get(voittaja.toLowerCase()) ?? null,
+    });
+  }
+
+  if (rivit.length === 0) {
+    return { error: "Yhtään riviä ei löytynyt.", status: 400 };
+  }
+
+  // Erissa, koska batch ottaa rajallisen maaran kerralla.
+  let kirjattu = 0;
+  for (let i = 0; i < rivit.length; i += 50) {
+    const era = rivit.slice(i, i + 50).map((r) =>
+      env.DB.prepare(
+        `INSERT INTO loot_history
+           (raid_id, item_id, winner, user_id, awarded_at, awarded_by)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(item_id, winner, awarded_at) DO NOTHING`
+      ).bind(raidId, r.itemId, r.voittaja, r.userId, r.aika, actor)
+    );
+
+    const tulokset = await env.DB.batch(era);
+    for (const t of tulokset) kirjattu += t.meta?.changes ?? 0;
+  }
+
+  await kirjaa(env, actor, "TUO_HISTORIA", null,
+    `${rivit.length} riviä, ${kirjattu} uutta`);
+
+  return {
+    ok: true,
+    rivit: rivit.length,
+    uusia: kirjattu,
+    ohitettu,
+    tunnistamattomia: rivit.filter((r) => !r.userId).length,
+  };
+}
+
 /** Hakee kayttajan nimella nakymaa varten. */
 export async function haeKayttajaNimella(env, username) {
   return await env.DB.prepare(

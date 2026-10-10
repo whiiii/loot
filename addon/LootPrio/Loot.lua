@@ -105,6 +105,20 @@ end
 --- jakoon liittyvalta toiminnolta laitteistotapahtuman, eika ajastimesta
 --- tai viestista laukaistu kutsu mene lapi.
 function NS.Jaa(loot, nimi)
+  local luku
+  for _, r in ipairs(loot.rollit) do
+    if r.nimi == nimi then luku = r.luku break end
+  end
+
+  -- Testitilassa peliin ei koskettu lainkaan: kirjataan vain historia,
+  -- jotta koko ketjun voi kayda lapi ilman raidia.
+  if loot.testi then
+    loot.jaettu = true
+    NS.LisaaHistoriaan(loot.itemId, nimi, luku)
+    NS.Tulosta(("TESTI: %s -> %s"):format(loot.nimi or loot.itemId, nimi))
+    return true
+  end
+
   if not NS.OnLootMaster() then
     NS.Tulosta("vain master looter voi jakaa lootin.")
     return false
@@ -119,12 +133,11 @@ function NS.Jaa(loot, nimi)
   GiveMasterLoot(loot.slot, indeksi)
   loot.jaettu = true
 
-  if NS.db.ilmoitaVoittaja then
-    local luku
-    for _, r in ipairs(loot.rollit) do
-      if r.nimi == nimi then luku = r.luku break end
-    end
+  -- Historia kirjataan vasta kun jako on oikeasti tehty, jottei siihen
+  -- paady itemeita joita kukaan ei saanut.
+  NS.LisaaHistoriaan(loot.itemId, nimi, luku)
 
+  if NS.db.ilmoitaVoittaja then
     local viesti = ("%s -> %s%s"):format(
       loot.linkki or loot.nimi or "?",
       nimi,
@@ -134,6 +147,67 @@ function NS.Jaa(loot, nimi)
     SendChatMessage("LootPrio: " .. viesti, IsInRaid() and "RAID" or "PARTY")
   end
 
+  return true
+end
+
+--- Rakentaa testi-istunnon tuoduista profiileista.
+---
+--- Itemit poimitaan oikeista valinnoista, jotta halukkaita loytyy ja koko
+--- nakyma kayttaytyy kuten oikeassa raidissa. Mitaan ei anneta kenellekaan
+--- eika pelin loottiin kosketa.
+function NS.AloitaTesti()
+  local kpl = 0
+  for _ in pairs(NS.db.profiilit) do kpl = kpl + 1 end
+
+  if kpl == 0 then
+    NS.Tulosta("tuo ensin profiilit, muuten testissa ei ole ketaan.")
+    return false
+  end
+
+  -- Suosituimmat itemit ensin: niissa on eniten nahtavaa.
+  local laskuri = {}
+  for _, valinnat in pairs(NS.db.profiilit) do
+    for _, itemId in pairs(valinnat) do
+      laskuri[itemId] = (laskuri[itemId] or 0) + 1
+    end
+  end
+
+  local jarjestys = {}
+  for itemId, n in pairs(laskuri) do
+    jarjestys[#jarjestys + 1] = { itemId = itemId, n = n }
+  end
+  table.sort(jarjestys, function(a, b)
+    if a.n == b.n then return a.itemId < b.itemId end
+    return a.n > b.n
+  end)
+
+  local lootit = {}
+  for i = 1, math.min(3, #jarjestys) do
+    local itemId = jarjestys[i].itemId
+
+    -- Testissa kelpaavat kaikki varanneet, myos ne jotka eivat ole paikalla.
+    local halukkaat = NS.KukaHaluaa(itemId)
+    local nimi, linkki, laatu = GetItemInfo(itemId)
+
+    lootit[#lootit + 1] = {
+      slot = 0,
+      itemId = itemId,
+      linkki = linkki,
+      nimi = (nimi or ("item " .. itemId)) .. " |cff8b9299[testi]|r",
+      laatu = laatu or 4,
+      maara = 1,
+      halukkaat = halukkaat,
+      rollit = arvoRollit(halukkaat),
+      jaettu = false,
+      testi = true,
+    }
+  end
+
+  NS.istunto.lootit = lootit
+  NS.istunto.avoin = true
+  NS.istunto.testi = true
+
+  NS.Tulosta(("testi-istunto: %d itemia."):format(#lootit))
   return true
 end
 

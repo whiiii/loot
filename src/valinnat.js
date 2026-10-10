@@ -75,11 +75,31 @@ export async function haeNakyma(env, kayttajaId) {
   const picks = {};
   for (const r of valinnat.results ?? []) picks[r.slot_key] = r.item_id;
 
+  // Mitka valituista itemeista on jo saatu.
+  //
+  // Haku tehdaan seka kayttajatunnuksella etta hahmonimella: addon kirjaa
+  // voittajaksi hahmon nimen, eika sita aina saada yhdistettya tunnukseen
+  // tuontihetkella - esimerkiksi jos hahmo on nimetty uudelleen.
+  const saadutRivit = await env.DB.prepare(
+    `SELECT DISTINCT h.item_id
+       FROM loot_history h
+       LEFT JOIN users u ON u.id = ?
+      WHERE h.user_id = ?
+         OR LOWER(h.winner) = LOWER(COALESCE(u.character_name, ''))
+         OR LOWER(h.winner) = LOWER(COALESCE(u.first_name, ''))
+         OR LOWER(h.winner) = LOWER(COALESCE(u.username, ''))`
+  )
+    .bind(kayttajaId, kayttajaId)
+    .all();
+
+  const saadut = (saadutRivit.results ?? []).map((r) => r.item_id);
+
   return {
     raid: { id: raidi.id, name: raidi.name },
     paikat: PAIKAT,
     items: itemit.results ?? [],
     picks,
+    saadut,
   };
 }
 
