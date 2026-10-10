@@ -73,6 +73,54 @@ local function teksti(vanhempi, fontti, x, y, sisalto)
   return fs
 end
 
+--- Liittaa pelin item-tooltipin kehykseen.
+---
+--- Raidin keskella kukaan ei muista ulkoa mita "Wristguards of True Flight"
+--- on, eika laukun avaaminen kesken jaon ole vaihtoehto.
+local function itemTooltip(kehys, linkki, itemId)
+  if not linkki and not itemId then return kehys end
+
+  kehys:EnableMouse(true)
+  kehys:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+
+    if linkki then
+      GameTooltip:SetHyperlink(linkki)
+    else
+      GameTooltip:SetHyperlink("item:" .. itemId)
+    end
+
+    GameTooltip:Show()
+  end)
+  kehys:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+  return kehys
+end
+
+--- Mitta tekstille, jotta tooltipin hiirialue ei ulotu tyhjaan tilaan.
+local mitta
+local function tekstinLeveys(sisalto, fontti)
+  if not mitta then
+    mitta = UIParent:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    mitta:Hide()
+  end
+
+  mitta:SetFontObject(_G[fontti or "GameFontHighlightSmall"])
+  mitta:SetText(sisalto or "")
+  return mitta:GetStringWidth()
+end
+
+--- Hiirialue nimen kohdalle rivin alkuun.
+---
+--- Vain nimen levyinen eika koko rivi: koko rivin alue avaisi tooltipin
+--- aina kun kursori kulkee listan yli, ja peittaisi rivin napit.
+local function nimiAlue(rivi, nimi, itemId, linkki, fontti)
+  local alue = CreateFrame("Frame", nil, rivi)
+  alue:SetPoint("TOPLEFT", 4, 0)
+  alue:SetSize(tekstinLeveys(nimi, fontti) + 8, rivi:GetHeight())
+  return itemTooltip(alue, linkki, itemId)
+end
+
 local function nappi(vanhempi, leveys, korkeus, otsikko, toiminto)
   local b = CreateFrame("Button", nil, vanhempi, "UIPanelButtonTemplate")
   b:SetSize(leveys, korkeus)
@@ -207,9 +255,44 @@ local function piirraLoot()
     kehys.napit:SetHeight(26)
 
     kehys.lopeta = nappi(kehys.napit, 110, 22, "Päätä jako", function()
-      NS.PaataSessio()
+      -- Yhteenveto raidichattiin: se poistaa riidat ennen kuin niita on.
+      NS.PaataSessio(true)
     end)
     kehys.lopeta:SetPoint("BOTTOMLEFT", 0, 0)
+
+    kehys.sulje = nappi(kehys.napit, 130, 22, "Sulje vastaukset", function()
+      NS.SuljeVastaukset()
+    end)
+    kehys.sulje:SetPoint("BOTTOMLEFT", 114, 0)
+
+    kehys.peru = nappi(kehys.napit, 100, 22, "Peru jako", function()
+      NS.PeruJako()
+    end)
+    kehys.peru:SetPoint("BOTTOMLEFT", 248, 0)
+
+    -- Kulunut aika oikeaan reunaan. Mikaan ei pakota lopettamaan, mutta
+    -- jostain on nahtava milloin odottaminen ei enaa tuota vastauksia.
+    kehys.kello = kehys.napit:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    kehys.kello:SetPoint("BOTTOMRIGHT", -4, 4)
+
+    kehys.napit:SetScript("OnUpdate", function(self, kulunut)
+      self.viive = (self.viive or 0) + kulunut
+      if self.viive < 1 then return end
+      self.viive = 0
+
+      if not NS.sessio then
+        kehys.kello:SetText("")
+        return
+      end
+
+      local s = NS.SessionKesto()
+      local raja = NS.db.vastausAika or 90
+      local vari = (s > raja and not NS.sessio.suljettu) and VIRHE or HIMMEA
+
+      kehys.kello:SetText(("%s%d:%02d%s"):format(
+        vari, math.floor(s / 60), s % 60,
+        NS.sessio.suljettu and "  suljettu|r" or "|r"))
+    end)
   end
 
   tyhjenna(kehys.valilehdet)
@@ -220,7 +303,11 @@ local function piirraLoot()
   sisalto:SetWidth(kehys:GetWidth() - 26)
 
   local sessio = NS.sessio
-  kehys.lopeta:SetShown(sessio ~= nil and NS.OnOfficer())
+  local officer = NS.OnOfficer()
+
+  kehys.lopeta:SetShown(sessio ~= nil and officer)
+  kehys.sulje:SetShown(sessio ~= nil and officer and not sessio.suljettu)
+  kehys.peru:SetShown(sessio ~= nil and officer and sessio.viimeisin ~= nil)
 
   if not sessio then
     local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
@@ -277,6 +364,7 @@ local function piirraLoot()
     end)
     b:SetPoint("TOPLEFT", x, 0)
     if sessio.valittu == item.indeksi then b:LockHighlight() end
+    itemTooltip(b, item.linkki, item.itemId)
     lisaaLapsi(kehys.valilehdet, b)
 
     x = x + 100
@@ -295,6 +383,9 @@ local function piirraLoot()
   teksti(otsikko, "GameFontNormal", 4, 0,
     varilla(laatu, nimi)
     .. (item.jaettu and ("  " .. OK .. "→ " .. (item.saaja or "?") .. "|r") or ""))
+
+  nimiAlue(otsikko, nimi, item.itemId, item.linkki, "GameFontNormal")
+
   y = y - 24
 
   -- Omat vastausnapit, jos itemia ei ole viela jaettu.
@@ -317,13 +408,26 @@ local function piirraLoot()
         NS.Vastaa(item.indeksi, v.koodi)
       end)
       b:SetPoint("TOPLEFT", nx, 0)
-      b:SetEnabled(sallittu and not valittu)
+      b:SetEnabled(sallittu and not valittu and not sessio.suljettu)
       if valittu == v.koodi then b:LockHighlight() end
 
       nx = nx + leveys + 4
     end
 
     y = y - 28
+
+    -- Syy harmaalle napille nakyviin. Ilman tata pelaaja ei tieda onko
+    -- kyse suljetusta jaosta, puuttuvasta profiilista vai omasta
+    -- vastauksesta joka jo meni lapi.
+    if sessio.suljettu or not NS.OmassaProfiilissa(item.itemId) then
+      local syy = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
+      syy:SetPoint("TOPLEFT", 0, y)
+      syy:SetHeight(14)
+      teksti(syy, "GameFontDisableSmall", 8, 0,
+        sessio.suljettu and "vastaukset suljettu"
+          or "LootPrio ei käytössä: item ei ole profiilissasi")
+      y = y - 16
+    end
   end
 
   -- Vastaukset. Lootmasterin asetuksesta riippuu naytetaanko kaikkien
@@ -516,6 +620,7 @@ local function piirraKauppa()
     if nimi:len() > 28 then nimi = nimi:sub(1, 27) .. "…" end
 
     teksti(rivi, "GameFontHighlightSmall", 4, 0, nimi)
+    nimiAlue(rivi, nimi, r.itemId, r.linkki)
     teksti(rivi, "GameFontHighlightSmall", 200, 0, r.nimi or "?")
     teksti(rivi, "GameFontHighlightSmall", 300, 0,
       laukuissa[r.itemId] and (OK .. "kyllä|r") or (VIRHE .. "ei|r"))
@@ -537,10 +642,43 @@ end
 -- Näkymä: Jäsenet
 --------------------------------------------------------------------------
 
+--- Addonin tila yhdelle pelaajalle: teksti ja vari.
+---
+--- Kolme eri tilaa, koska ne vaativat eri toimen: puuttuva addon pitaa
+--- asentaa, vanha paivittaa, ja tuomaton vienti tuoda. Yksi yhteinen
+--- "ei vastannut" ei kerro kummasta on kyse.
+local function addonTila(nimi)
+  local a = NS.addonit and NS.addonit[nimi]
+
+  if not a then return HIMMEA .. "—|r" end
+  if NS.VersioVanhempi(a.versio, NS.VERSIO) then
+    return VIRHE .. "v" .. a.versio .. "|r"
+  end
+  if a.profiileja == 0 then return VIRHE .. "ei dataa|r" end
+
+  return OK .. "v" .. a.versio .. "|r"
+end
+
 local function piirraJasenet()
   local kehys = nakymat.jasenet
-  if not kehys.vieritys then
+
+  if not kehys.rakennettu then
+    kehys.rakennettu = true
+
     kehys.vieritys = teeVieritys(kehys, "LootPrioJasenScroll")
+    kehys.vieritys:SetPoint("TOPLEFT", 0, 0)
+    kehys.vieritys:SetPoint("BOTTOMRIGHT", -26, 28)
+
+    local tarkista = nappi(kehys, 150, 22, "Tarkista addonit", function()
+      NS.PyydaVersiot()
+      NS.Tulosta("kysytty. Vastaukset saapuvat parin sekunnin kuluessa.")
+    end)
+    tarkista:SetPoint("BOTTOMLEFT", 0, 0)
+
+    kehys.selite = kehys:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+    kehys.selite:SetPoint("BOTTOMLEFT", 158, 6)
+    kehys.selite:SetPoint("BOTTOMRIGHT", -4, 6)
+    kehys.selite:SetJustifyH("LEFT")
   end
 
   local sisalto = kehys.vieritys.sisalto
@@ -556,6 +694,7 @@ local function piirraJasenet()
     teksti(rivi, "GameFontDisableSmall", 4, 0,
       "Ei tuotuja profiileja. Tuonti-välilehdeltä.")
     sisalto:SetHeight(30)
+    kehys.selite:SetText("")
     return
   end
 
@@ -564,25 +703,64 @@ local function piirraJasenet()
   local otsikko = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
   otsikko:SetPoint("TOPLEFT", 0, y)
   teksti(otsikko, "GameFontNormalSmall", 4, 0, "HAHMO")
-  teksti(otsikko, "GameFontNormalSmall", 200, 0, "VALINNAT")
-  teksti(otsikko, "GameFontNormalSmall", 280, 0, "SAATU")
+  teksti(otsikko, "GameFontNormalSmall", 150, 0, "VALINNAT")
+  teksti(otsikko, "GameFontNormalSmall", 215, 0, "SAATU")
+  teksti(otsikko, "GameFontNormalSmall", 280, 0, "ADDON")
   y = y - 18
+
+  local puuttuu = 0
 
   for _, j in ipairs(jasenet) do
     local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
     rivi:SetPoint("TOPLEFT", 0, y)
+    rivi:SetPoint("TOPRIGHT", 0, y)
     rivi:SetHeight(16)
 
     -- Paikalla oleva erottuu: lootmasteria kiinnostaa kuka on nyt mukana.
-    local vari = raidissa[j.nimi] and "" or HIMMEA
+    local paikalla = raidissa[j.nimi]
+    local vari = paikalla and "" or HIMMEA
     teksti(rivi, "GameFontHighlightSmall", 4, 0, vari .. j.nimi .. "|r")
-    teksti(rivi, "GameFontHighlightSmall", 200, 0, tostring(j.valintoja))
-    teksti(rivi, "GameFontHighlightSmall", 280, 0, tostring(NS.SaatuMaara(j.nimi)))
+    teksti(rivi, "GameFontHighlightSmall", 150, 0, tostring(j.valintoja))
+
+    -- Sivuston luku suluissa: siita nakee onko SAATU killan historia vai
+    -- vain taman koneen kirjaamat jaot.
+    local kaikki = NS.SaatuMaara(j.nimi)
+    local sivustolta = NS.SaatuSivustolta(j.nimi)
+    teksti(rivi, "GameFontHighlightSmall", 215, 0,
+      tostring(kaikki)
+      .. (kaikki > sivustolta and (HIMMEA .. " (+" .. (kaikki - sivustolta) .. ")|r") or ""))
+
+    if paikalla then
+      teksti(rivi, "GameFontHighlightSmall", 280, 0, addonTila(j.nimi))
+      if not (NS.addonit and NS.addonit[j.nimi]) then puuttuu = puuttuu + 1 end
+    end
 
     y = y - 16
   end
 
   sisalto:SetHeight(math.max(1, -y))
+
+  -- Paikalla olevat joilla ei ole profiilia lainkaan: heille jako nayttaa
+  -- rikkinaiselta, koska LootPrio-nappi on harmaa eika syy nay mistaan.
+  local ilmanProfiilia = {}
+  for nimi, online in pairs(raidissa) do
+    if online and not NS.db.profiilit[nimi] then
+      ilmanProfiilia[#ilmanProfiilia + 1] = nimi
+    end
+  end
+  table.sort(ilmanProfiilia)
+
+  local osat = {}
+  if puuttuu > 0 then
+    osat[#osat + 1] = ("%s%d ilman addonia|r"):format(VIRHE, puuttuu)
+  end
+  if #ilmanProfiilia > 0 then
+    osat[#osat + 1] = ("%sei profiilia: %s%s|r"):format(VIRHE,
+      table.concat(ilmanProfiilia, ", ", 1, math.min(4, #ilmanProfiilia)),
+      #ilmanProfiilia > 4 and ", …" or "")
+  end
+
+  kehys.selite:SetText(table.concat(osat, "  ·  "))
 end
 
 --------------------------------------------------------------------------
@@ -690,6 +868,7 @@ local function piirraHistoria()
     if nimi:len() > 26 then nimi = nimi:sub(1, 25) .. "…" end
 
     teksti(rivi, "GameFontHighlightSmall", 4, 0, nimi)
+    nimiAlue(rivi, nimi, r.itemId)
     teksti(rivi, "GameFontHighlightSmall", 190, 0, r.nimi or "?")
 
     -- Peruste eli "milla napilla": sama vari kuin vastausnapissa.
@@ -830,14 +1009,33 @@ local function piirraAsetukset()
       lx = lx + 78
     end
 
+    -- Vastausaika ei pakota mitaan: se vaihtaa kellon varin, ja lootmaster
+    -- paattaa itse milloin odottaminen ei enaa tuota vastauksia.
+    local aikaSelite = kehys:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    aikaSelite:SetPoint("TOPLEFT", 6, -176)
+    aikaSelite:SetText("Muistuta vastauksista:")
+
+    local ajat = { 60, 90, 120 }
+    kehys.aikaNapit = {}
+    local ax = 4
+    for _, s in ipairs(ajat) do
+      local b = nappi(kehys, 74, 22, s .. " s", function()
+        NS.db.vastausAika = s
+        piirraAsetukset()
+      end)
+      b:SetPoint("TOPLEFT", ax, -196)
+      kehys.aikaNapit[s] = b
+      ax = ax + 78
+    end
+
     local testi = nappi(kehys, 160, 24, "Käynnistä testi", function()
       if NS.AloitaTesti() then naytaNakyma("loot") end
     end)
-    testi:SetPoint("TOPLEFT", 4, -176)
+    testi:SetPoint("TOPLEFT", 4, -228)
 
     local testiSelite = kehys:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-    testiSelite:SetPoint("TOPLEFT", 6, -204)
-    testiSelite:SetPoint("TOPRIGHT", -6, -204)
+    testiSelite:SetPoint("TOPLEFT", 6, -256)
+    testiSelite:SetPoint("TOPRIGHT", -6, -256)
     testiSelite:SetJustifyH("LEFT")
     testiSelite:SetText("Tekee neljä kuviteltua loottia tuoduista valinnoista ja "
       .. "arpoo niihin vastaukset. Assign kirjaa historiaan mutta ei koske "
@@ -850,16 +1048,24 @@ local function piirraAsetukset()
       paivitaTila()
       naytaNakyma("jasenet")
     end)
-    tyhjennaProfiilit:SetPoint("TOPLEFT", 4, -248)
+    tyhjennaProfiilit:SetPoint("TOPLEFT", 4, -300)
   end
 
   kehys.valinta:SetChecked(NS.db.rollienNakyvyys == "raid")
   kehys.ilmoita:SetChecked(NS.db.ilmoitaVoittaja)
   kehys.kauppa:SetChecked(NS.db.taytaKauppa ~= false)
 
-  -- Valittu laaturaja jaa pohjaan, jotta nykyinen asetus nakyy.
+  -- Valittu arvo jaa pohjaan, jotta nykyinen asetus nakyy.
   for laatu, b in pairs(kehys.laatuNapit) do
     if laatu == (NS.db.laukkuLaatu or 3) then
+      b:LockHighlight()
+    else
+      b:UnlockHighlight()
+    end
+  end
+
+  for s, b in pairs(kehys.aikaNapit) do
+    if s == (NS.db.vastausAika or 90) then
       b:LockHighlight()
     else
       b:UnlockHighlight()
@@ -1056,6 +1262,11 @@ function NS.PaivitaValinta()
     teksti(rivi, "GameFontHighlightSmall", 28, -4,
       varilla(item.laatu, item.nimi)
       .. (poistaIndeksi and (" " .. HIMMEA .. "(käsin)|r") or ""))
+
+    local alue = CreateFrame("Frame", nil, rivi)
+    alue:SetPoint("TOPLEFT", 28, -2)
+    alue:SetSize(tekstinLeveys(item.nimi) + 8, 18)
+    itemTooltip(alue, item.linkki, item.itemId)
 
     -- Montako paikalla olevaa on varannut taman: officer nakee heti onko
     -- itemille kysyntaa vai meneeko se joka tapauksessa vendorille.

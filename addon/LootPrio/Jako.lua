@@ -147,8 +147,88 @@ function NS.SaapuvaSessio(sessioId, nakyvyys, itemit, lahettaja)
   NS.Avaa("loot")
 end
 
-function NS.PaataSessio()
+--- Sulkee vastaukset. Itemit jaavat jaettaviksi, mutta uusia vastauksia
+--- ei oteta vastaan - muuten lista muuttuu kesken paatoksen.
+function NS.SuljeVastaukset()
+  local s = NS.sessio
+  if not s or s.suljettu then return false end
+  if not s.testi and not NS.OnOfficer() then return false end
+
+  s.suljettu = true
+  if not s.testi then NS.Comm.Laheta("SULJE", s.id) end
+
+  if NS.PaivitaNakyma then NS.PaivitaNakyma("loot") end
+  return true
+end
+
+function NS.VastauksetSuljettu(sessioId)
+  local s = NS.sessio
+  if not s or s.id ~= sessioId then return end
+
+  s.suljettu = true
+  if NS.PaivitaNakyma then NS.PaivitaNakyma("loot") end
+end
+
+--- Montako sekuntia sessio on ollut auki.
+function NS.SessionKesto()
+  if not NS.sessio then return 0 end
+  return math.floor(GetTime() - (NS.sessio.alkoi or GetTime()))
+end
+
+--- Session jaot pelaajittain, yhteenvetoa varten.
+local function sessionJaot()
+  local perPelaaja, jarjestys = {}, {}
+
+  -- pairs eika ipairs: sessio voi saapua useassa osassa, joten indeksit
+  -- eivat ole valttamatta jonossa.
+  for _, item in pairs(NS.sessio and NS.sessio.itemit or {}) do
+    if item.jaettu and item.saaja then
+      if not perPelaaja[item.saaja] then
+        perPelaaja[item.saaja] = {}
+        jarjestys[#jarjestys + 1] = item.saaja
+      end
+
+      local nimi = item.nimi
+      if not nimi and item.itemId then nimi = GetItemInfo(item.itemId) end
+
+      local rivi = perPelaaja[item.saaja]
+      rivi[#rivi + 1] = nimi or ("item " .. tostring(item.itemId))
+    end
+  end
+
+  table.sort(jarjestys)
+  return perPelaaja, jarjestys
+end
+
+--- Tiivis yhteenveto raidichattiin jaon paatteeksi.
+---
+--- Yksi rivi per pelaaja eika per item: viestin raja on 255 tavua, ja
+--- lyhyt lista luetaan, pitka ei.
+function NS.LahetaYhteenveto()
+  if not NS.sessio or NS.sessio.testi then return end
+  if not IsInGroup() then return end
+
+  local perPelaaja, jarjestys = sessionJaot()
+  if #jarjestys == 0 then return end
+
+  local kanava = IsInRaid() and "RAID" or "PARTY"
+  SendChatMessage("LootPrio - jaetut itemit:", kanava)
+
+  for _, nimi in ipairs(jarjestys) do
+    local viesti = nimi .. ": " .. table.concat(perPelaaja[nimi], ", ")
+
+    -- Rajan ylittava rivi katkaistaan: pelin oma katkaisu jattaisi
+    -- puolikkaan item-nimen eika kerro etta jotain jai pois.
+    if #viesti > 230 then viesti = viesti:sub(1, 227) .. "..." end
+    SendChatMessage(viesti, kanava)
+  end
+end
+
+function NS.PaataSessio(yhteenveto)
   if not NS.sessio then return end
+
+  if yhteenveto then NS.LahetaYhteenveto() end
+
   NS.Comm.Laheta("LOPPU", NS.sessio.id)
   NS.sessio = nil
   if NS.PaivitaNakyma then NS.PaivitaNakyma("loot") end
@@ -171,7 +251,7 @@ end
 --- muut vastasivat, muuten lista olisi vain lootmasterin tiedossa.
 function NS.Vastaa(indeksi, koodi)
   local s = NS.sessio
-  if not s then return end
+  if not s or s.suljettu then return end
   if not NS.VASTAUS[koodi] then return end
 
   local item = s.itemit[indeksi]
@@ -192,6 +272,7 @@ end
 function NS.KirjaaVastaus(sessioId, indeksi, pelaaja, koodi, luku)
   local s = NS.sessio
   if not s or s.id ~= sessioId then return end
+  if s.suljettu then return end
   if not NS.VASTAUS[koodi] then return end
 
   local item = s.itemit[indeksi]
@@ -334,7 +415,11 @@ function NS.KirjaaJako(sessioId, indeksi, saaja, koodi, luku)
 
   -- Peruste talletetaan numeron rinnalle: "kuka sai ja milla napilla" on
   -- se mita historiasta myohemmin kysytaan.
-  NS.LisaaHistoriaan(item.itemId, saaja, luku, koodi, item.nimi)
+  item.historiaId = NS.LisaaHistoriaan(item.itemId, saaja, luku, koodi, item.nimi)
+
+  -- Viimeisin jako muistiin perumista varten. Assign-napit ovat pienia ja
+  -- lista tiheaa, joten harhaklikkaus ei saa olla pysyva.
+  s.viimeisin = indeksi
 
   -- Valittuna oleva valilehti katoaa jaon myota, joten siirrytaan
   -- seuraavaan avoimeen.
@@ -344,4 +429,50 @@ function NS.KirjaaJako(sessioId, indeksi, saaja, koodi, luku)
   end
 
   if NS.PaivitaNakyma then NS.PaivitaNakyma("loot") end
+end
+
+--- Peruu yhden jaon: item palaa valilehtiin ja historiarivi haviaa.
+---
+--- Vain viimeisin jako. Pidempi peruuttaminen vaatisi tiedon siita mika
+--- jarjestys oli, ja raidin keskella se olisi enemman sekaannuksen lahde
+--- kuin apu.
+function NS.PeruJako(indeksi, lahettaja)
+  local s = NS.sessio
+  if not s then return false end
+
+  indeksi = indeksi or s.viimeisin
+  if not indeksi then return false end
+
+  local item = s.itemit[indeksi]
+  if not item or not item.jaettu then return false end
+
+  -- Paikallinen peruminen vaatii officer-oikeudet; verkosta tuleva on jo
+  -- tarkistettu lahettajan arvosta.
+  if not lahettaja and not item.testi and not NS.OnOfficer() then
+    NS.Tulosta("vain officer voi perua jaon.")
+    return false
+  end
+
+  local saaja = item.saaja
+
+  NS.PoistaHistoriasta(item.historiaId)
+  if NS.PoistaKaupasta then NS.PoistaKaupasta(item.historiaId) end
+
+  item.jaettu = false
+  item.saaja = nil
+  item.saajanKoodi = nil
+  item.historiaId = nil
+
+  if s.viimeisin == indeksi then s.viimeisin = nil end
+  s.valittu = indeksi
+
+  if not lahettaja and not item.testi then
+    NS.Comm.Laheta("PERU", ("%s %d"):format(s.id, indeksi))
+  end
+
+  NS.Tulosta(("jako peruttu: %s -> %s"):format(
+    item.nimi or ("item " .. tostring(item.itemId)), saaja or "?"))
+
+  if NS.PaivitaNakyma then NS.PaivitaNakyma("loot") end
+  return true
 end

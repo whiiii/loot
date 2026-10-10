@@ -9,7 +9,7 @@
 local ADDON, NS = ...
 
 NS.NIMI = ADDON
-NS.VERSIO = "0.5"
+NS.VERSIO = "0.6"
 NS.VARI = "|cffc9a227"   -- sama kulta kuin sivustolla
 NS.LOPPU = "|r"
 
@@ -24,6 +24,11 @@ local OLETUKSET = {
 
   -- Tuodut profiilit: [hahmonNimi] = { [paikka] = itemId }
   profiilit = {},
+
+  -- Sivuston tieto siita montako itemia kukin on saanut: [hahmo] = maara.
+  -- Addonin oma historia on vain taman koneen tieto, joten ilman tata luku
+  -- nollautuu heti kun lootmaster vaihtuu.
+  saadut = {},
 
   -- Tuonnin tiedot, jotta nakee milloin data on peraisin.
   raidinNimi = nil,
@@ -44,6 +49,18 @@ local OLETUKSET = {
   -- Taytetaanko kauppaikkuna itsestaan. Addon ei koskaan hyvaksy kauppaa,
   -- vain asettaa tavarat paikoilleen.
   taytaKauppa = true,
+
+  -- Historian rivien juokseva tunniste. Tarvitaan jaon perumiseen:
+  -- indeksi siirtyy kun rivi poistetaan, tunniste ei.
+  historiaSeuraavaId = 1,
+
+  -- Montako sekuntia vastauksia odotetaan ennen kuin niista muistutetaan.
+  -- Ei pakota mitaan: lootmaster paattaa milloin riittaa.
+  vastausAika = 90,
+
+  -- Hahmon muut kirjoitusasut: [alias pienella] = profiilin nimi. Peli ja
+  -- sivusto eivat valttamatta kayta samaa muotoa.
+  aliakset = {},
 
   -- Minimap-napin kulma asteina. Sijainti sailyy istuntojen yli.
   minimapKulma = 200,
@@ -66,10 +83,24 @@ function NS.Tulosta(...)
   print(NS.VARI .. "LootPrio" .. NS.LOPPU .. ":", ...)
 end
 
---- Pelaajan nimi ilman realmia. Vertailu sivuston nimiin tehdaan talla.
+--- Pelaajan nimi profiilien muodossa.
+---
+--- Muunnos tehdaan tassa eika kutsupaikoissa: jos oma nimi olisi valilla
+--- pelin ja valilla sivuston muodossa, vertailut osuisivat satunnaisesti.
+--- NS.Nimi tulee Data.lua:sta, joka latautuu taman jalkeen - siksi
+--- tarkistus.
 function NS.OmaNimi()
   local nimi = UnitName("player")
+  if NS.Nimi then return NS.Nimi(nimi) end
   return nimi
+end
+
+--- Pelin antama nimi sellaisenaan, ilman muunnosta.
+---
+--- Tarvitaan niissa harvoissa paikoissa joissa nimea kaytetaan pelille
+--- puhumiseen eika profiilien vertailuun.
+function NS.OmaPeliNimi()
+  return UnitName("player")
 end
 
 --- Onko pelaaja raidin johtaja tai apulainen.
@@ -86,7 +117,8 @@ function NS.OnOfficer(nimi)
 
   for i = 1, GetNumGroupMembers() do
     local rNimi, rank = GetRaidRosterInfo(i)
-    if rNimi == nimi then
+    -- Roosterin nimi on pelin muodossa, vertailtava nimi profiilien.
+    if rNimi and NS.Nimi(rNimi) == nimi then
       return (rank or 0) >= 1
     end
   end
@@ -101,7 +133,7 @@ function NS.OnLootMaster()
   if IsInRaid() then
     if not mlRaidID then return false end
     local nimi = GetRaidRosterInfo(mlRaidID)
-    return nimi == NS.OmaNimi()
+    return nimi == NS.OmaPeliNimi()
   end
 
   -- Ryhmassa 0 tarkoittaa pelaajaa itseaan.
@@ -115,20 +147,23 @@ function NS.ItemIdLinkista(linkki)
   return id and tonumber(id) or nil
 end
 
---- Raidissa paikalla olevat hahmonimet joukkona.
+--- Raidissa paikalla olevat profiilien nimilla joukkona.
+---
+--- Nimet muunnetaan heti profiilien muotoon: tama on se paikka josta pelin
+--- nimet valuvat koko addonin lapi, ja yksi muunnos tassa riittaa.
 function NS.RaidinJasenet()
   local joukko = {}
 
   if IsInRaid() then
     for i = 1, GetNumGroupMembers() do
       local nimi, _, _, _, _, _, _, online = GetRaidRosterInfo(i)
-      if nimi then joukko[nimi] = online ~= false end
+      if nimi then joukko[NS.Nimi(nimi)] = online ~= false end
     end
   elseif IsInGroup() then
     joukko[NS.OmaNimi()] = true
     for i = 1, GetNumSubgroupMembers() do
       local nimi = UnitName("party" .. i)
-      if nimi then joukko[nimi] = true end
+      if nimi then joukko[NS.Nimi(nimi)] = true end
     end
   else
     joukko[NS.OmaNimi()] = true

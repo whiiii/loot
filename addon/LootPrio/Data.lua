@@ -34,6 +34,8 @@ function NS.Jasenna(teksti)
     raidinNimi = teksti:match("\nRAID=([^\n]*)") or "?",
     aika = teksti:match("\nTIME=([^\n]*)") or "?",
     profiilit = {},
+    saadut = {},
+    aliakset = {},
     hahmoja = 0,
   }
 
@@ -53,11 +55,58 @@ function NS.Jasenna(teksti)
     end
   end
 
+  -- Saadut itemit sivuston koko historiasta. Vapaaehtoinen rivi: vanha
+  -- vienti ei sisalla naita, eika se ole syy hylata tuontia.
+  for rivi in teksti:gmatch("S=([^\n]+)") do
+    local hahmo, maara = rivi:match("^([^|]+)|(%d+)$")
+    if hahmo then
+      tulos.saadut[hahmo:match("^%s*(.-)%s*$")] = tonumber(maara)
+    end
+  end
+
+  -- Hahmon muut kirjoitusasut. Sivusto ei tieda missa muodossa peli antaa
+  -- nimen, joten se lahettaa vaihtoehdot ja addon valitsee osuvan.
+  for rivi in teksti:gmatch("A=([^\n]+)") do
+    local hahmo, muut = rivi:match("^([^|]+)|(.*)$")
+
+    if hahmo then
+      hahmo = hahmo:match("^%s*(.-)%s*$")
+
+      for alias in (muut or ""):gmatch("[^,]+") do
+        alias = alias:match("^%s*(.-)%s*$")
+        if alias ~= "" then
+          tulos.aliakset[alias:lower()] = hahmo
+        end
+      end
+    end
+  end
+
   if tulos.hahmoja == 0 then
     return nil, "Yhtaan profiilia ei loytynyt."
   end
 
   return tulos
+end
+
+--- Pelin antama nimi profiilien nimeksi.
+---
+--- Kaikki sisainen vertailu tehdaan profiilin nimella. Muunnos tapahtuu
+--- siella missa pelin nimi tulee addoniin - roosterista, viestin
+--- lahettajasta tai kaupan vastapuolesta - jottei samasta pelaajasta ole
+--- kahta eri nimea missaan muualla.
+function NS.Nimi(peliNimi)
+  if not peliNimi or peliNimi == "" then return peliNimi end
+
+  -- Realm pois: raidikanavalta tuleva nimi voi olla "Nimi-Realm".
+  peliNimi = peliNimi:match("^[^-]+") or peliNimi
+
+  -- Tapahtuma voi osua ennen tallennuksen latautumista.
+  if not NS.db then return peliNimi end
+
+  if NS.db.profiilit[peliNimi] then return peliNimi end
+
+  local kanoninen = NS.db.aliakset and NS.db.aliakset[peliNimi:lower()]
+  return kanoninen or peliNimi
 end
 
 --- Tuo tekstin tietokantaan. Korvaa vanhan kokonaan.
@@ -69,6 +118,8 @@ function NS.Tuo(teksti)
   if not data then return nil, virhe end
 
   NS.db.profiilit = data.profiilit
+  NS.db.saadut = data.saadut
+  NS.db.aliakset = data.aliakset
   NS.db.raidinNimi = data.raidinNimi
   NS.db.tuotu = date("%Y-%m-%d %H:%M")
 
@@ -128,21 +179,42 @@ function NS.Jasenet()
   return lista
 end
 
---- Montako itemia kyseinen hahmo on jo saanut taman datan aikana.
+--- Montako itemia kyseinen hahmo on jo saanut.
+---
+--- Sivuston luku ja taman koneen kirjaamat jaot yhteen: sivusto tietaa
+--- kaiken mika on sille viety, ja paikallinen historia sen mika on jaettu
+--- viennin jalkeen. Kun historia viedaan sivustolle ja profiilit tuodaan
+--- uudelleen, luku siirtyy S-riveille ja paikallinen historia tyhjennetaan -
+--- siksi nama eivat kahdenna toisiaan.
 function NS.SaatuMaara(hahmo)
-  local n = 0
+  local n = NS.db.saadut[hahmo] or 0
+
   for _, rivi in ipairs(NS.db.historia) do
     if rivi.nimi == hahmo then n = n + 1 end
   end
+
   return n
+end
+
+--- Paljonko luvusta on sivuston tietoa. Nakymassa erotteluna, jotta
+--- lootmaster nakee onko luku oikeasti killan historia vai vain taman illan.
+function NS.SaatuSivustolta(hahmo)
+  return NS.db.saadut[hahmo] or 0
 end
 
 --- Kirjaa jaetun lootin historiaan.
 ---
 --- Aikaleima talletetaan tekstina samassa muodossa kuin sivusto kayttaa,
 --- jotta tuonti ei joudu arvailemaan muotoa.
+--- Palauttaa rivin tunnisteen, jolla jako voidaan perua.
 function NS.LisaaHistoriaan(itemId, nimi, luku, koodi, itemNimi)
+  -- Juokseva tunniste eika indeksi: indeksi siirtyy kun rivi poistetaan,
+  -- ja peruminen osuisi silloin vaaraan riviin.
+  local id = NS.db.historiaSeuraavaId or 1
+  NS.db.historiaSeuraavaId = id + 1
+
   NS.db.historia[#NS.db.historia + 1] = {
+    id = id,
     itemId = itemId,
     nimi = nimi,
     luku = luku,
@@ -153,6 +225,22 @@ function NS.LisaaHistoriaan(itemId, nimi, luku, koodi, itemNimi)
     aika = date("%Y-%m-%d %H:%M:%S"),
     raidi = NS.db.raidinNimi,
   }
+
+  return id
+end
+
+--- Poistaa historiarivin tunnisteella. Kaytossa vain jaon perumisessa.
+function NS.PoistaHistoriasta(id)
+  if not id then return false end
+
+  for i, r in ipairs(NS.db.historia) do
+    if r.id == id then
+      table.remove(NS.db.historia, i)
+      return true
+    end
+  end
+
+  return false
 end
 
 --- Historia tekstina sivustolle vietavaksi.

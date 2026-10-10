@@ -123,13 +123,13 @@ function NS.Jaa(item, nimi)
     -- Jono kauppaan vain jaon tehneelle: tavara on hanen laukussaan, ja
     -- vain han voi sen luovuttaa.
     if NS.LisaaKauppaan and NS.sessio.lootmaster == NS.OmaNimi() then
-      NS.LisaaKauppaan(item.itemId, nimi, item.nimi, item.linkki)
+      NS.LisaaKauppaan(item.itemId, nimi, item.nimi, item.linkki, item.historiaId)
     end
 
     NS.Comm.Laheta("JAETTU", ("%s %d %s %s %d"):format(
       NS.sessio.id, item.indeksi, nimi, koodi or "muu", luku or 0))
 
-    if NS.db.ilmoitaVoittaja then
+    if NS.db.ilmoitaVoittaja and IsInGroup() then
       local peruste = koodi and NS.VASTAUS[koodi] and NS.VASTAUS[koodi].nimi or "?"
       local viesti = ("%s -> %s (%s%s)"):format(
         item.linkki or item.nimi or "?",

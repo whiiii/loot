@@ -48,13 +48,42 @@ itemit ensin omiin laukkuihinsa ja laittaa ne sitten jakoon.
 4. **Lootmaster näkee kaikki vastaukset** yhdessä listassa: peruste,
    arvonta, pelaaja ja montako loottia hän on jo saanut. Listan voi
    **lajitella otsikoista**; oletuksena vahvin peruste on ylimpänä ja
-   arvonta ratkaisee vain tasatilanteen.
+   arvonta ratkaisee vain tasatilanteen. Kulunut aika näkyy oikeassa
+   alareunassa ja muuttuu punaiseksi kun odotusaika ylittyy.
+   *Sulje vastaukset* estää uudet vastaukset kun päätös on tehty.
 5. **Assign** rivin lopusta antaa itemin. Addon ilmoittaa raidichattiin
-   mikä item meni kenelle ja millä perusteella.
+   mikä item meni kenelle ja millä perusteella. *Peru jako* kumoaa
+   viimeisimmän: item palaa välilehtiin ja historiarivi häviää.
 6. **Jaettu item katoaa välilehdistä** ja jää Historia-välilehdelle.
    Jäljellä on aina vain se mikä on vielä päättämättä.
-7. **Avaa kauppa voittajan kanssa.** Assignatut itemit asettuvat
+7. **Päätä jako** lähettää raidichattiin yhteenvedon illan jaosta: yksi
+   rivi per pelaaja.
+8. **Avaa kauppa voittajan kanssa.** Assignatut itemit asettuvat
    vaihtopaikoille itsestään — ks. *Kauppa*-välilehti alla.
+
+## Ennen raidia: tarkista addonit
+
+**Jäsenet → Tarkista addonit** kysyy koko raidin version. Lista näyttää
+kolme eri tilaa, koska ne vaativat eri toimen:
+
+| ADDON | Tarkoittaa |
+|---|---|
+| `v0.6` vihreänä | kaikki kunnossa |
+| `v0.5` punaisena | vanha versio — päivitettävä |
+| `ei dataa` punaisena | addon on, mutta vientiä ei ole tuotu |
+| `—` harmaana | ei vastannut: addon puuttuu |
+
+Alareunassa näkyy lisäksi ketkä paikallaolijat **eivät ole profiililistassa
+lainkaan**. Heille jako näyttää rikkinäiseltä — LootPrio-nappi on harmaa
+eikä syy näy mistään — vaikka mikään ei ole rikki.
+
+Tämä on syytä tehdä kerran ennen ensimmäistä bossia. Eri versiot eivät
+kerro itsestään mitään: viestien kenttämäärä vain ei täsmää, ja osa jaoista
+jää kirjautumatta hiljaa.
+
+**SAATU-sarake** on sivuston koko historia. Jos luvun perässä on `(+2)`,
+kaksi niistä on tämän koneen kirjaamia jakoja joita ei ole vielä viety
+sivustolle.
 
 ## Kauppa
 
@@ -85,7 +114,11 @@ huutomerkillä kaikille joilla profiilit on tuotuna.
 **Historia.** Jaetut itemit kirjautuvat Historia-välilehdelle: item, saaja,
 peruste ja arvonta. *Luo vienti sivustolle* vaihtaa listan tilalle tekstin,
 jonka liittää sivuston ylläpitoon — sen jälkeen saadut itemit saavat
-profiiliin vihreän merkin.
+profiiliin vihreän merkin ja siirtyvät seuraavan viennin SAATU-lukuun.
+
+Kierros on siis: tuo profiilit → jaa → vie historia → tuo profiilit
+uudelleen → tyhjennä paikallinen historia. Niin kauan kuin se tehdään
+tässä järjestyksessä, luvut eivät kahdennu.
 
 **Laaturaja.** Asetukset → *Jaettavien vähimmäislaatu* ratkaisee mitä
 laukuista tarjotaan. Oletus on sininen; ilman rajaa listassa olisi jokainen

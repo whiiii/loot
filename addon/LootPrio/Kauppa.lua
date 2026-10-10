@@ -25,7 +25,7 @@ local PAIKKOJA = 6
 --- Jono on tarpeen koska jako ja luovutus tapahtuvat eri aikaan: itemit
 --- jaetaan bossin jalkeen ja kaupataan silloin kun kummallakin sattuu
 --- olemaan hetki aikaa.
-function NS.LisaaKauppaan(itemId, nimi, itemNimi, linkki)
+function NS.LisaaKauppaan(itemId, nimi, itemNimi, linkki, historiaId)
   if not itemId or not nimi then return end
   if nimi == NS.OmaNimi() then return end  -- itselleen ei kaupata
 
@@ -34,8 +34,29 @@ function NS.LisaaKauppaan(itemId, nimi, itemNimi, linkki)
     nimi = nimi,
     itemNimi = itemNimi,
     linkki = linkki,
+    -- Sama tunniste kuin historiarivilla, jotta peruttu jako lahtee myos
+    -- kauppajonosta eika jaa odottamaan luovutusta jota ei tule.
+    historiaId = historiaId,
     aika = date("%Y-%m-%d %H:%M:%S"),
   }
+end
+
+--- Poistaa jonosta perutun jaon.
+---
+--- Vain toimittamattoman: jos item on jo vaihtanut omistajaa, perumisella
+--- ei voi muuttaa sita, ja rivin poistaminen vain hukkaisi tiedon.
+function NS.PoistaKaupasta(historiaId)
+  if not historiaId then return false end
+
+  for i, r in ipairs(NS.db.kaupat) do
+    if r.historiaId == historiaId and not r.toimitettu then
+      table.remove(NS.db.kaupat, i)
+      if NS.PaivitaNakyma then NS.PaivitaNakyma("kauppa") end
+      return true
+    end
+  end
+
+  return false
 end
 
 --- Toimittamatta olevat kaupat, halutessa yhdelle pelaajalle.
@@ -136,7 +157,8 @@ local function vastapuoli()
     nimi = TradeFrameRecipientNameText:GetText()
   end
 
-  return nimi and nimi:match("^[^-]+") or nil
+  -- Profiilien muotoon, koska jono on kirjattu silla nimella.
+  return nimi and NS.Nimi(nimi) or nil
 end
 
 local function vapaaPaikka()

@@ -22,6 +22,20 @@ import {
  */
 const PERUSTEET = new Set(["prio", "main", "off", "muu"]);
 
+/**
+ * Hahmon nimi pelissa, SQL-lausekkeena.
+ *
+ * Addon vertaa tata UnitName("player")-nimeen, joten kyse on nimenomaan
+ * hahmon nimesta eika tunnuksesta tai koko nimesta. first_name on se
+ * sarake johon migraatio v4 siirsi vanhan character_name-arvon, ja uudet
+ * jasenet saavat vain sen - character_name jai tyhjaksi.
+ *
+ * Yhdessa paikassa, koska kaksi erilaista totuutta samasta nimesta on
+ * juuri se virhe jonka takia viennissa oli vaara nimi.
+ */
+const HAHMONIMI =
+  "COALESCE(NULLIF(u.first_name, ''), NULLIF(u.character_name, ''), u.username)";
+
 /** Selkokielinen virheilmoitus kelpaamattomasta luokka-rooli-parista. */
 function rooliVirhe(luokka, rooli) {
   const luokanNimi = LUOKAT[luokka] ? LUOKAT[luokka].nimi : luokka;
@@ -501,17 +515,30 @@ export async function lukitseOma(env, kayttaja) {
  *   TIME=<vientihetki UTC>
  *   SLOTS=head,neck,shoulder,...
  *   P=<hahmo>|<paikka>:<itemId>,<paikka>:<itemId>,...
+ *   S=<hahmo>|<saatuja itemeita yhteensa>
+ *   A=<hahmo>|<muu kirjoitusasu>,<muu kirjoitusasu>
  *
  * Pystyviiva ja pilkku eivat esiinny hahmonimissa eivatka numeroissa,
  * joten erottimia ei tarvitse suojata.
+ *
+ * S-rivit ovat mukana siksi, etta addonin oma historia on vain yhden
+ * koneen tieto ja se tyhjennetaan kasin. Ilman naita lootmasterin
+ * toiseksi tarkein luku - montako kukin on jo saanut - on nolla heti kun
+ * lootmaster vaihtuu tai addon asennetaan uudelleen.
+ *
+ * A-rivit ovat hahmon muut kirjoitusasut: "etunimi sukunimi" ja tunnus.
+ * Addon vertaa profiileja siihen nimeen jonka peli antaa, eika sivusto voi
+ * tietaa kumpaa muotoa peli kayttaa. Vaihtoehtojen lahettaminen on
+ * varmempaa kuin arvaaminen: vaara arvaus nakyisi vain siina, etta
+ * kenenkaan profiili ei osu keneenkaan - ja se on juuri se virhe joka
+ * viennissa oli.
  */
 export async function teeVienti(env) {
   const raidi = await haeAktiiviRaidi(env);
   if (!raidi) return { error: "Aktiivista raidia ei ole.", status: 409 };
 
   const rivit = await env.DB.prepare(
-    `SELECT COALESCE(NULLIF(u.character_name, ''), u.username) AS hahmo,
-            p.slot_key, p.item_id
+    `SELECT ${HAHMONIMI} AS hahmo, p.slot_key, p.item_id
        FROM picks p
        JOIN users u ON u.id = p.user_id
       WHERE p.raid_id = ?
@@ -519,6 +546,33 @@ export async function teeVienti(env) {
   )
     .bind(raidi.id)
     .all();
+
+  // Saadut itemit koko historiasta, ei vain tasta raidista: jaon
+  // oikeudenmukaisuutta katsotaan tierin yli eika yhden illan sisalla.
+  //
+  // Mukana myos ne rivit joiden voittajaa ei tunnistettu tunnukseksi -
+  // nimi riittaa addonille, ja sen pudottaminen vaarentaisi lukua.
+  const saadut = await env.DB.prepare(
+    `SELECT hahmo, SUM(n) AS n FROM (
+       SELECT ${HAHMONIMI} AS hahmo, COUNT(*) AS n
+         FROM loot_history h
+         JOIN users u ON u.id = h.user_id
+        GROUP BY hahmo
+       UNION ALL
+       SELECT h.winner AS hahmo, COUNT(*) AS n
+         FROM loot_history h
+        WHERE h.user_id IS NULL
+        GROUP BY h.winner
+     )
+     GROUP BY hahmo
+     ORDER BY hahmo COLLATE NOCASE`
+  ).all();
+
+  const kayttajat = await env.DB.prepare(
+    `SELECT ${HAHMONIMI} AS hahmo, u.username, u.first_name, u.last_name
+       FROM users u
+      ORDER BY hahmo COLLATE NOCASE`
+  ).all();
 
   const perHahmo = new Map();
   for (const r of rivit.results ?? []) {
@@ -534,6 +588,21 @@ export async function teeVienti(env) {
   ];
   for (const [hahmo, valinnat] of perHahmo) {
     out.push(`P=${hahmo}|${valinnat.join(",")}`);
+  }
+  for (const r of saadut.results ?? []) {
+    if (r.hahmo && r.n > 0) out.push(`S=${r.hahmo}|${r.n}`);
+  }
+
+  for (const u of kayttajat.results ?? []) {
+    const etu = (u.first_name ?? "").trim();
+    const suku = (u.last_name ?? "").trim();
+
+    // Pilkku ja pystyviiva rikkoisivat rivin, joten sellaiset nimet
+    // jatetaan pois sen sijaan etta erottimet suojattaisiin.
+    const muut = [etu && suku ? `${etu} ${suku}` : null, u.username]
+      .filter((n) => n && n !== u.hahmo && !/[|,]/.test(n));
+
+    if (muut.length) out.push(`A=${u.hahmo}|${[...new Set(muut)].join(",")}`);
   }
 
   return {
