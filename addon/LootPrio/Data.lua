@@ -141,11 +141,15 @@ end
 ---
 --- Aikaleima talletetaan tekstina samassa muodossa kuin sivusto kayttaa,
 --- jotta tuonti ei joudu arvailemaan muotoa.
-function NS.LisaaHistoriaan(itemId, nimi, luku)
+function NS.LisaaHistoriaan(itemId, nimi, luku, koodi, itemNimi)
   NS.db.historia[#NS.db.historia + 1] = {
     itemId = itemId,
     nimi = nimi,
     luku = luku,
+    -- Peruste talletetaan numeron rinnalle: "kuka sai ja milla napilla"
+    -- on se mita historiasta myohemmin kysytaan.
+    koodi = koodi,
+    itemNimi = itemNimi,
     aika = date("%Y-%m-%d %H:%M:%S"),
     raidi = NS.db.raidinNimi,
   }
@@ -162,8 +166,10 @@ function NS.HistoriaTeksti()
   }
 
   for _, r in ipairs(NS.db.historia) do
-    rivit[#rivit + 1] = ("L=%d|%s|%s|%s"):format(
-      r.itemId, r.nimi, r.aika, r.luku and tostring(r.luku) or "-")
+    rivit[#rivit + 1] = ("L=%d|%s|%s|%s|%s"):format(
+      r.itemId, r.nimi, r.aika,
+      r.luku and tostring(r.luku) or "-",
+      r.koodi or "-")
   end
 
   return table.concat(rivit, "\n")

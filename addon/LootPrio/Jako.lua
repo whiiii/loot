@@ -58,33 +58,47 @@ function NS.NaytaKaikkiVastaukset()
   return NS.OnOfficer()
 end
 
---- Lootmaster avaa session loottiruudun sisallosta.
-function NS.AvaaSessio(lootit)
-  if #lootit == 0 then
-    NS.Tulosta("ei jaettavaa loottia.")
+--- Lootmaster avaa session valituista itemeista.
+function NS.AvaaSessio(valitut, testi)
+  if #valitut == 0 then
+    NS.Tulosta("ei valittuja itemeita.")
     return false
   end
 
   NS.sessio = uusiSessio(tostring(math.random(100000, 999999)),
     NS.OmaNimi(), NS.db.rollienNakyvyys)
+  NS.sessio.testi = testi
 
-  for i, loot in ipairs(lootit) do
+  for i, loot in ipairs(valitut) do
     NS.sessio.itemit[i] = {
       indeksi = i,
-      slot = loot.slot,
       itemId = loot.itemId,
       linkki = loot.linkki,
       nimi = loot.nimi,
       laatu = loot.laatu,
-      testi = loot.testi,
+      testi = loot.testi or testi,
       jaettu = false,
       saaja = nil,
       vastaukset = {},
     }
   end
 
-  NS.LahetaSessio()
+  NS.sessio.valittu = 1
+
+  if not testi then NS.LahetaSessio() end
+  NS.Avaa("loot")
   return true
+end
+
+--- Jakamatta olevat itemit. Jaetut katoavat valilehdista ja jaavat
+--- historiaan, joten lista lyhenee sita mukaa kun jako etenee.
+function NS.AvoimetItemit()
+  local lista = {}
+  for _, item in pairs(NS.sessio and NS.sessio.itemit or {}) do
+    if not item.jaettu then lista[#lista + 1] = item end
+  end
+  table.sort(lista, function(a, b) return a.indeksi < b.indeksi end)
+  return lista
 end
 
 --- Lahettaa session raidille.
@@ -203,7 +217,7 @@ function NS.KirjaaVastaus(sessioId, indeksi, pelaaja, koodi, luku)
   }
 
   -- Lootmaster arpoo ja kertoo tuloksen, jotta kaikilla on sama numero.
-  if NS.OnLootMaster() and koodi ~= "pass" and not luku then
+  if NS.sessio.lootmaster == NS.OmaNimi() and koodi ~= "pass" and not luku then
     item.vastaukset[pelaaja].luku = math.random(1, 100)
     NS.Comm.Laheta("ARPA", ("%s %d %s %d"):format(
       sessioId, indeksi, pelaaja, item.vastaukset[pelaaja].luku))
@@ -244,7 +258,26 @@ function NS.ItemienVastaukset(item)
     }
   end
 
+  -- Oletusjarjestys on peruste ensin ja arvonta vasta sen jalkeen: rolli
+  -- ratkaisee vain tasatilanteen. Lajittelu vaihdettavissa otsikoista.
+  local kentta = NS.lajittelu or "jarjestys"
+  local nouseva = NS.lajitteluNouseva
+  if nouseva == nil then nouseva = true end
+
   table.sort(lista, function(a, b)
+    local x, z = a[kentta], b[kentta]
+
+    if x ~= z then
+      if type(x) == "number" or type(z) == "number" then
+        x, z = x or 0, z or 0
+        if nouseva then return x < z else return x > z end
+      end
+      if nouseva then return tostring(x) < tostring(z) end
+      return tostring(x) > tostring(z)
+    end
+
+    -- Tasatilanne ratkaistaan aina samalla tavalla, jotta jarjestys ei
+    -- vaihtele piirrosta toiseen.
     if a.jarjestys ~= b.jarjestys then return a.jarjestys < b.jarjestys end
     if (a.luku or 0) ~= (b.luku or 0) then return (a.luku or 0) > (b.luku or 0) end
     return a.nimi < b.nimi
@@ -284,18 +317,31 @@ end
 ---
 --- Lootmaster lahettaa tiedon, jotta jokaisen saatujen itemien laskuri
 --- pysyy ajan tasalla - ei vain sen joka jakoi.
-function NS.KirjaaJako(sessioId, indeksi, saaja)
+function NS.KirjaaJako(sessioId, indeksi, saaja, koodi, luku)
   local s = NS.sessio
   if not s or s.id ~= sessioId then return end
 
   local item = s.itemit[indeksi]
   if not item or item.jaettu then return end
 
+  local v = item.vastaukset[saaja]
+  koodi = koodi or (v and v.koodi)
+  luku = luku or (v and v.luku)
+
   item.jaettu = true
   item.saaja = saaja
+  item.saajanKoodi = koodi
 
-  local v = item.vastaukset[saaja]
-  NS.LisaaHistoriaan(item.itemId, saaja, v and v.luku)
+  -- Peruste talletetaan numeron rinnalle: "kuka sai ja milla napilla" on
+  -- se mita historiasta myohemmin kysytaan.
+  NS.LisaaHistoriaan(item.itemId, saaja, luku, koodi, item.nimi)
+
+  -- Valittuna oleva valilehti katoaa jaon myota, joten siirrytaan
+  -- seuraavaan avoimeen.
+  if s.valittu == indeksi then
+    local avoimet = NS.AvoimetItemit()
+    s.valittu = avoimet[1] and avoimet[1].indeksi or nil
+  end
 
   if NS.PaivitaNakyma then NS.PaivitaNakyma("loot") end
 end

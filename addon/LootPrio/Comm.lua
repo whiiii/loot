@@ -32,9 +32,9 @@ end
 
 function NS.Comm.Kasittele(tyyppi, sisalto, lahettaja)
   if tyyppi == "SESSIO" then
-    -- Session avaa vain lootmaster. Muuten kuka tahansa voisi avata
+    -- Jaon avaa vain officer. Muuten kuka tahansa voisi avata
     -- vastausikkunan koko raidille.
-    if not NS.OnLootMasterNimi(lahettaja) then return end
+    if not NS.OnOfficer(lahettaja) then return end
 
     local sessioId, nakyvyys, lista =
       sisalto:match("^(%S+)%s+(%S+)%s+(.*)$")
@@ -59,8 +59,8 @@ function NS.Comm.Kasittele(tyyppi, sisalto, lahettaja)
     NS.KirjaaVastaus(sessioId, tonumber(indeksi), lahettaja, koodi)
 
   elseif tyyppi == "ARPA" then
-    -- Arvonnan tekee lootmaster, jotta kaikilla on sama numero.
-    if not NS.OnLootMasterNimi(lahettaja) then return end
+    -- Arvonnan tekee jaon avaaja, jotta kaikilla on sama numero.
+    if not NS.OnOfficer(lahettaja) then return end
 
     local sessioId, indeksi, pelaaja, luku =
       sisalto:match("^(%S+)%s+(%d+)%s+(%S+)%s+(%d+)$")
@@ -69,15 +69,16 @@ function NS.Comm.Kasittele(tyyppi, sisalto, lahettaja)
     NS.KirjaaArpa(sessioId, tonumber(indeksi), pelaaja, tonumber(luku))
 
   elseif tyyppi == "JAETTU" then
-    if not NS.OnLootMasterNimi(lahettaja) then return end
+    if not NS.OnOfficer(lahettaja) then return end
 
-    local sessioId, indeksi, saaja = sisalto:match("^(%S+)%s+(%d+)%s+(%S+)$")
+    local sessioId, indeksi, saaja, koodi, luku =
+      sisalto:match("^(%S+)%s+(%d+)%s+(%S+)%s+(%S+)%s+(%d+)$")
     if not sessioId then return end
 
-    NS.KirjaaJako(sessioId, tonumber(indeksi), saaja)
+    NS.KirjaaJako(sessioId, tonumber(indeksi), saaja, koodi, tonumber(luku))
 
   elseif tyyppi == "LOPPU" then
-    if not NS.OnLootMasterNimi(lahettaja) then return end
+    if not NS.OnOfficer(lahettaja) then return end
     NS.SessioPaattyi(sisalto:match("^(%S+)"))
   end
 end
@@ -105,17 +106,3 @@ if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
   C_ChatInfo.RegisterAddonMessagePrefix(ETULIITE)
 end
 
---- Onko annettu nimi talla hetkella master looter.
-function NS.OnLootMasterNimi(nimi)
-  local metodi, mlPartyID, mlRaidID = GetLootMethod()
-  if metodi ~= "master" then return false end
-
-  if IsInRaid() then
-    if not mlRaidID then return false end
-    local mlNimi = GetRaidRosterInfo(mlRaidID)
-    return mlNimi == nimi
-  end
-
-  if mlPartyID == 0 then return nimi == NS.OmaNimi() end
-  return UnitName("party" .. mlPartyID) == nimi
-end

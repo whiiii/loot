@@ -9,7 +9,7 @@
 local ADDON, NS = ...
 
 NS.NIMI = ADDON
-NS.VERSIO = "0.1"
+NS.VERSIO = "0.4"
 NS.VARI = "|cffc9a227"   -- sama kulta kuin sivustolla
 NS.LOPPU = "|r"
 
@@ -29,9 +29,13 @@ local OLETUKSET = {
   raidinNimi = nil,
   tuotu = nil,
 
-  -- Jaettu loot. Lista rivia { itemId, nimi, aika, luku }.
+  -- Jaettu loot. Lista rivia { itemId, nimi, aika, luku, koodi, itemNimi }.
   -- Tasta tehdaan vienti sivustolle.
   historia = {},
+
+  -- Laukkulistan vahimmaislaatu: 2 vihrea, 3 sininen, 4 violetti.
+  -- Ilman rajaa listassa olisi jokainen juomapullo ja kangaspala.
+  laukkuLaatu = 3,
 
   -- Minimap-napin kulma asteina. Sijainti sailyy istuntojen yli.
   minimapKulma = 200,

@@ -29,30 +29,46 @@ oikotie, eivät ainoa tie.
 **Tuonti.** Ikkunan Tuonti-välilehti: liitä sivuston *Vienti addoniin*
 -teksti ja paina Tuo. Tuonti korvaa aiemmat profiilit kokonaan.
 
-**Raidissa.** Kun loottiruutu aukeaa, lootmaster avaa jaon ja jokaisen
-raidilaisen ikkuna aukeaa samaan näkymään. Itemit ovat välilehtinä, ja
-jokaisen kohdalla vastataan yhdellä napilla: **LootPrio, Main spec, Off
-spec, Muu** tai **Pass**.
+## Raidissa
 
-Vastaukset lähetetään raidille, joten **jokainen näkee mitä muut
-vastasivat** — vastaus, arvonta, pelaaja ja montako loottia hän on jo
-saanut. Lista on järjestetty vahvimmasta perusteesta alkaen, ja
-lootmasterilla on jokaisella rivillä Assign-nappi.
+Jako kulkee laukkujen kautta, ei loottiruudun. Lootmaster kerää pudonneet
+itemit ensin omiin laukkuihinsa ja laittaa ne sitten jakoon.
 
-Kaikki itemit menevät jakoon, eivät vain profiileissa olevat — profiili on
-yksi peruste neljästä, ei pääsyvaatimus.
+1. **Kerää lootit laukkuihin.** Addon ei lue loottiruutua.
+2. **Loot → Jaa lootit.** Ikkuna listaa laukkujen puettavat itemit ja
+   kertoo jokaisen kohdalla montako paikalla olevaa on varannut sen.
+   Valitse jaettavat ja paina *Aloita jako (n)*.
+3. **Jokaisen raidilaisen ikkuna aukeaa** samaan näkymään. Itemit ovat
+   välilehtinä, ja jokaisen kohdalla vastataan yhdellä napilla:
+   **LootPrio, Main spec, Off spec, Muu** tai **Pass**.
+4. **Lootmaster näkee kaikki vastaukset** yhdessä listassa: peruste,
+   arvonta, pelaaja ja montako loottia hän on jo saanut. Listan voi
+   **lajitella otsikoista**; oletuksena vahvin peruste on ylimpänä ja
+   arvonta ratkaisee vain tasatilanteen.
+5. **Assign** rivin lopusta antaa itemin. Addon ilmoittaa raidichattiin
+   mikä item meni kenelle ja millä perusteella.
+6. **Jaettu item katoaa välilehdistä** ja jää Historia-välilehdelle.
+   Jäljellä on aina vain se mikä on vielä päättämättä.
+
+Kaikki valitut itemit menevät jakoon, eivät vain profiileissa olevat —
+profiili on yksi peruste neljästä, ei pääsyvaatimus.
 
 **LootPrio-nappi on käytössä vain jos item on oikeasti omassa
 profiilissa.** Jos joku silti väittää priota, rivi merkitään punaisella
 huutomerkillä kaikille joilla profiilit on tuotuna.
 
-**Historia.** Jaetut itemit kirjautuvat Historia-välilehdelle. Luo vienti
-ja liitä teksti sivuston ylläpitoon, niin saadut itemit saavat profiiliin
-vihreän merkin.
+**Historia.** Jaetut itemit kirjautuvat Historia-välilehdelle: item, saaja,
+peruste ja arvonta. *Luo vienti sivustolle* vaihtaa listan tilalle tekstin,
+jonka liittää sivuston ylläpitoon — sen jälkeen saadut itemit saavat
+profiiliin vihreän merkin.
 
-**Testi.** Asetukset → *Käynnistä testi* tekee kolme kuviteltua loottia ja
-arpoo niille vastaukset. Mitään ei anneta kenellekään eikä pelin loottiin
-kosketa.
+**Laaturaja.** Asetukset → *Jaettavien vähimmäislaatu* ratkaisee mitä
+laukuista tarjotaan. Oletus on sininen; ilman rajaa listassa olisi jokainen
+juomapullo.
+
+**Testi.** Asetukset → *Käynnistä testi* tekee neljä kuviteltua loottia
+tuoduista valinnoista ja arpoo niille vastaukset. Mitään ei lähetetä
+raidille eikä pelin loottiin kosketa.
 
 ## Komennot
 
@@ -81,3 +97,7 @@ vasten ja merkitään jos se ei täsmää.
 **Pitää vastauksia salassa.** Raidikanava menee kaikille, joten tiedot
 ovat jokaisen koneella riippumatta asetuksesta. "Vain officerit" on
 näkyvyysvalinta, ei salaisuus - muokattu addon näkisi ne silti.
+
+**Siirtää itemiä laukusta toiselle pelaajalle.** Pelin oma lootin jako
+toimii vain avoimen loottiruudun kautta. Siksi *Assign* kirjaa päätöksen ja
+kertoo sen raidille, mutta tavaran lootmaster antaa itse kaupassa.
