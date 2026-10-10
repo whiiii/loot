@@ -9,6 +9,44 @@ let paikkoja = 0;
 let kaikki = [];
 
 /**
+ * Kuvakkeet polkuina, ei valmiina elementteina.
+ *
+ * SVG kirjoitetaan koodissa eika haeta tiedostoina: kuvakkeita on muutama
+ * ja ne ovat pieniä, joten erilliset pyynnot maksaisivat enemman kuin
+ * saastaisivat. Viiva perii varinsa napilta, joten sama kuvake sopii
+ * jokaiseen savyyn.
+ */
+const KUVAKE = {
+  profiili:
+    '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle>',
+  lukkoKiinni:
+    '<rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>',
+  lukkoAuki:
+    '<rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path>',
+  avain:
+    '<circle cx="7.5" cy="15.5" r="4.5"></circle><path d="M10.7 12.3 21 2"></path><path d="m17 6 3 3"></path>',
+  roska:
+    '<polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>',
+};
+
+/** Nappi tai linkki, jolla on kuvake ja teksti. */
+function teeNappi({ teksti, kuvake, luokka, toiminto, osoite }) {
+  const el = document.createElement(osoite ? "a" : "button");
+  if (osoite) el.href = osoite;
+  else el.type = "button";
+
+  el.className = luokka + " nappi-kuvake";
+  el.innerHTML =
+    `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ` +
+    `stroke="currentColor" stroke-width="2" stroke-linecap="round" ` +
+    `stroke-linejoin="round">${kuvake}</svg><span></span>`;
+
+  el.querySelector("span").textContent = teksti;
+  if (toiminto) el.addEventListener("click", toiminto);
+  return el;
+}
+
+/**
  * Lajittelu otsikon mukaan.
  *
  * Jarjestysarvo haetaan omalla funktiolla kentan sijaan, koska naytettava
@@ -138,31 +176,45 @@ function piirra(users) {
     const toiminto = document.createElement("td");
     toiminto.className = "toiminnot";
 
-    const profiili = document.createElement("a");
-    profiili.className = "nappi-hillitty";
-    profiili.href = "/profiili?katso=" + encodeURIComponent(u.username);
-    profiili.textContent = "Profiili";
-    toiminto.appendChild(profiili);
+    // Napit ovat samanlevyisia ja kuvakkeellisia: sama leveys pitaa rivit
+    // suorassa, ja kuvake erottaa toiminnon nopeammin kuin sanan lukeminen.
+    // Savy kertoo painoarvon - lukko odottaa tekemista, poisto on
+    // peruuttamaton.
+    toiminto.appendChild(
+      teeNappi({
+        teksti: "Profiili",
+        kuvake: KUVAKE.profiili,
+        luokka: "nappi-hillitty",
+        osoite: "/profiili?katso=" + encodeURIComponent(u.username),
+      })
+    );
 
-    // Napit eroavat toisistaan tarkoituksella. Lukko on arkinen toiminto,
-    // salasana hillitty, poisto peruuttamaton - ja sen pitaa nayttaa silta.
-    const lukko = document.createElement("button");
-    lukko.className = u.locked ? "nappi-korostus" : "nappi-hillitty";
-    lukko.textContent = u.locked ? "Avaa lukko" : "Lukitse";
-    lukko.addEventListener("click", () => vaihdaLukko(u.username, !u.locked));
-    toiminto.appendChild(lukko);
+    toiminto.appendChild(
+      teeNappi({
+        teksti: u.locked ? "Avaa" : "Lukitse",
+        kuvake: u.locked ? KUVAKE.lukkoAuki : KUVAKE.lukkoKiinni,
+        luokka: u.locked ? "nappi-korostus" : "nappi-hillitty",
+        toiminto: () => vaihdaLukko(u.username, !u.locked),
+      })
+    );
 
-    const salasana = document.createElement("button");
-    salasana.className = "nappi-hillitty";
-    salasana.textContent = "Salasana";
-    salasana.addEventListener("click", () => vaihdaSalasana(u.username));
-    toiminto.appendChild(salasana);
+    toiminto.appendChild(
+      teeNappi({
+        teksti: "Salasana",
+        kuvake: KUVAKE.avain,
+        luokka: "nappi-hillitty",
+        toiminto: () => vaihdaSalasana(u.username),
+      })
+    );
 
-    const poista = document.createElement("button");
-    poista.className = "nappi-vaara";
-    poista.textContent = "Poista";
-    poista.addEventListener("click", () => poistaKayttaja(u));
-    toiminto.appendChild(poista);
+    toiminto.appendChild(
+      teeNappi({
+        teksti: "Poista",
+        kuvake: KUVAKE.roska,
+        luokka: "nappi-vaara",
+        toiminto: () => poistaKayttaja(u),
+      })
+    );
 
     tr.appendChild(toiminto);
 

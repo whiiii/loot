@@ -55,13 +55,20 @@ a.linkkinappi[hidden] { display: none; }
 .ilmoitus.katselu {
   border-color: #2e5668;
   background: #0e1a20;
-  color: #8fc4dc;
+  color: #7fb3cc;
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 1.5rem;
 }
-.ilmoitus.katselu a { color: #8fc4dc; }
+.ilmoitus.katselu strong { color: #b9dcec; }
+.ilmoitus.katselu a {
+  flex: 0 0 auto;
+  color: #7fb3cc;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.ilmoitus.katselu a:hover { color: #b9dcec; text-decoration: underline; }
 
 /* Hahmoikkuna.
    Kaksi saraketta reunoilla, keskella tyhja alue ja alla kolme asepaikkaa. */

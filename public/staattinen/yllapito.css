@@ -50,12 +50,20 @@
   align-items: center;
 }
 
-/* Linkki joka nayttaa napilta. */
-.lista .toiminnot a.nappi-hillitty {
-  display: inline-block;
+/* Kuvakkeellinen nappi.
+   Kiintea leveys pitaa rivit suorassa: ilman sita "Avaa" ja "Lukitse"
+   siirtaisivat kaikkia muita nappeja aina kun lukon tila vaihtuu. */
+.nappi-kuvake {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .35rem;
+  min-width: 104px;
   text-decoration: none;
   line-height: 1.3;
 }
+.nappi-kuvake svg { flex: 0 0 13px; opacity: .85; }
+.nappi-kuvake:hover svg { opacity: 1; }
 
 .merkki {
   display: inline-block;
