@@ -318,13 +318,31 @@ document.addEventListener("keydown", (e) => {
  * raider ei paase enaa muuttamaan valintojaan itse.
  */
 $("tallenna").addEventListener("click", async () => {
-  const teksti =
-    tila.rooli === "officer"
-      ? "Merkitäänkö profiili valmiiksi?"
-      : "Tallennetaanko profiili lopullisesti?\n\n" +
-        "Et pysty enää muuttamaan valintojasi itse. Muutoksiin tarvitset officerin.";
+  const officer = tila.rooli === "officer";
 
-  if (!confirm(teksti)) return;
+  const eka = await vahvista({
+    otsikko: "Tallenna profiili",
+    teksti: officer
+      ? "Merkitäänkö profiili valmiiksi?\n\nLukko ei rajoita officeria, joten pääset muokkaamaan valintoja myös tämän jälkeen."
+      : "Valintasi tallentuvat ja profiili merkitään valmiiksi.",
+    vahvista: "Tallenna",
+  });
+  if (!eka) return;
+
+  // Toinen varmistus vain sille jota lukko oikeasti koskee. Officerille se
+  // olisi pelkka ylimaarainen klikkaus, koska han paasee muokkaamaan yha.
+  if (!officer) {
+    const toka = await vahvista({
+      otsikko: "Tämän jälkeen et pääse muokkaamaan",
+      teksti:
+        "Profiili lukitaan. Et pysty itse avaamaan sitä etkä muuttamaan " +
+        "valintojasi.\n\nMuutoksiin on otettava yhteyttä killan officeriin.",
+      vahvista: "Ymmärrän, lukitse",
+      peruuta: "En vielä",
+      varoitus: true,
+    });
+    if (!toka) return;
+  }
 
   try {
     const data = await fetch("/api/lukitse", { method: "POST" }).then((r) => r.json());

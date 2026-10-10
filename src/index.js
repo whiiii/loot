@@ -25,6 +25,7 @@ import {
   haeKayttajat,
   lukitseOma,
   teeVienti,
+  vaihdaRooli,
 } from "./yllapito.js";
 
 export default {
@@ -179,6 +180,17 @@ async function rajapinta(request, env, polku) {
       kayttaja.username,
       String(body.username ?? ""),
       !!body.locked
+    );
+    return json(tulos, tulos.error ? tulos.status : 200);
+  }
+
+  if (polku === "/api/rooli" && request.method === "POST") {
+    const body = await lueJson(request);
+    const tulos = await vaihdaRooli(
+      env,
+      kayttaja.username,
+      String(body.username ?? ""),
+      String(body.role ?? "")
     );
     return json(tulos, tulos.error ? tulos.status : 200);
   }

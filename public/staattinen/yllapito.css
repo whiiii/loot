@@ -55,6 +55,18 @@
 .merkki.lukko  { color: #e3cd8d; border-color: #6b5a2a; background: #221b0d; }
 .merkki.rooli  { color: var(--himmea); border-color: var(--reuna); background: transparent; }
 
+.roolivalinta {
+  padding: .25rem .4rem;
+  background: #120f0a;
+  border: 1px solid var(--reuna);
+  border-radius: 6px;
+  color: var(--teksti);
+  font: inherit;
+  font-size: .82rem;
+  cursor: pointer;
+}
+.roolivalinta:focus { outline: none; border-color: var(--korostus); }
+
 .napit { display: flex; gap: .5rem; flex-wrap: wrap; }
 
 textarea {

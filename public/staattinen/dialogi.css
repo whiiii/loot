@@ -1,0 +1,73 @@
+/* Vahvistusikkuna.
+   Selaimen oma confirm on ulkoasultaan hallitsematon ja nayttaa
+   verkkotunnuksen, mika saa oman sivuston toiminnon nayttamaan
+   ulkopuoliselta varoitukselta. */
+
+.dlg-peite {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(6, 4, 2, .78);
+  backdrop-filter: blur(3px);
+}
+.dlg-peite[hidden] { display: none; }
+
+.dlg {
+  width: 100%;
+  max-width: 400px;
+  background: var(--paneeli);
+  border: 1px solid var(--reuna);
+  border-top: 3px solid var(--korostus);
+  border-radius: 12px;
+  padding: 1.4rem 1.5rem 1.25rem;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .65);
+}
+
+.dlg h3 {
+  margin: 0 0 .5rem;
+  font-size: 1.05rem;
+  font-weight: 650;
+  color: var(--korostus);
+}
+
+.dlg p {
+  margin: 0 0 1.25rem;
+  font-size: .88rem;
+  line-height: 1.55;
+  color: var(--teksti);
+  white-space: pre-line;
+}
+
+.dlg-napit {
+  display: flex;
+  gap: .6rem;
+}
+
+.dlg-napit button {
+  flex: 1;
+  width: auto;
+  padding: .55rem .9rem;
+  font-size: .86rem;
+}
+
+.dlg-peruuta {
+  background: transparent;
+  border: 1px solid var(--reuna);
+  color: var(--teksti);
+}
+.dlg-peruuta:hover { background: #241e16; filter: none; }
+
+/* Varoitusmuoto: sama rakenne, eri vari. Kaytetaan siihen kohtaan jossa
+   seuraus on peruuttamaton ilman toisen ihmisen apua. */
+.dlg.varoitus {
+  border-top-color: #c75c4a;
+}
+.dlg.varoitus h3 { color: #e08c8c; }
+.dlg.varoitus .dlg-vahvista {
+  background: #c75c4a;
+  color: #1a0d0a;
+}

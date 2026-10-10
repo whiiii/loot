@@ -40,7 +40,7 @@ function piirra(users) {
     tr.appendChild(solu(u.character_name || "—"));
 
     const rooli = document.createElement("td");
-    rooli.appendChild(merkki(ROOLIT[u.role] || u.role, "rooli"));
+    rooli.appendChild(roolivalitsin(u));
     tr.appendChild(rooli);
 
     const valinnat = solu(`${u.valintoja} / ${paikkoja}`);
@@ -65,6 +65,64 @@ function piirra(users) {
   }
 }
 
+/**
+ * Roolin vaihto suoraan listasta.
+ *
+ * Valitsin palautetaan entiselleen jos palvelin torjuu muutoksen - muuten
+ * ruudulla lukisi eri rooli kuin kannassa, eika kayttaja huomaisi etta
+ * muutos ei mennyt lapi.
+ */
+function roolivalitsin(u) {
+  const sel = document.createElement("select");
+  sel.className = "roolivalinta";
+
+  for (const avain of Object.keys(ROOLIT)) {
+    const o = document.createElement("option");
+    o.value = avain;
+    o.textContent = ROOLIT[avain];
+    if (u.role === avain) o.selected = true;
+    sel.appendChild(o);
+  }
+
+  sel.addEventListener("change", async () => {
+    const uusi = sel.value;
+    const vanha = u.role;
+
+    const ok = await vahvista({
+      otsikko: "Vaihda rooli",
+      teksti: `${u.username}: ${ROOLIT[vanha]} → ${ROOLIT[uusi]}`,
+      vahvista: "Vaihda",
+      varoitus: vanha === "officer" && uusi !== "officer",
+    });
+
+    if (!ok) {
+      sel.value = vanha;
+      return;
+    }
+
+    try {
+      const d = await fetch("/api/rooli", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ username: u.username, role: uusi }),
+      }).then((r) => r.json());
+
+      if (!d.ok) {
+        naytaViesti(d.error || "Roolin vaihto ei onnistunut.");
+        sel.value = vanha;
+        return;
+      }
+      naytaViesti(`${u.username}: ${ROOLIT[uusi]}`);
+      lataa();
+    } catch (err) {
+      naytaViesti("Virhe: " + (err && err.message ? err.message : String(err)));
+      sel.value = vanha;
+    }
+  });
+
+  return sel;
+}
+
 function solu(teksti) {
   const td = document.createElement("td");
   td.textContent = teksti;
@@ -79,6 +137,15 @@ function merkki(teksti, luokka) {
 }
 
 async function vaihdaLukko(username, locked) {
+  const ok = await vahvista({
+    otsikko: locked ? "Lukitse profiili" : "Avaa lukko",
+    teksti: locked
+      ? `${username} ei pysty enää muuttamaan valintojaan.`
+      : `${username} pääsee muuttamaan valintojaan.`,
+    vahvista: locked ? "Lukitse" : "Avaa",
+  });
+  if (!ok) return;
+
   try {
     const d = await fetch("/api/lukko", {
       method: "POST",

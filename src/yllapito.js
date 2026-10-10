@@ -51,6 +51,48 @@ export async function asetaLukko(env, actor, username, locked) {
   return { ok: true, username: kohde.username, locked: locked ? 1 : 0 };
 }
 
+export const ROOLIT = ["social", "raider", "officer"];
+
+/**
+ * Vaihtaa kayttajan roolin.
+ *
+ * Viimeista officeria ei voi alentaa. Ilman tata kilta voi jaada ilman
+ * yllapitoa yhdella klikkauksella, eika sita saa itse korjattua - lukkojen
+ * avaus ja roolien vaihto vaativat juuri sen roolin joka juuri katosi.
+ */
+export async function vaihdaRooli(env, actor, username, rooli) {
+  if (!ROOLIT.includes(rooli)) return { error: "Tuntematon rooli.", status: 400 };
+
+  const kohde = await env.DB.prepare(
+    "SELECT id, username, role FROM users WHERE username = ?"
+  )
+    .bind(username)
+    .first();
+
+  if (!kohde) return { error: "Käyttäjää ei löydy.", status: 404 };
+  if (kohde.role === rooli) return { ok: true, username: kohde.username, role: rooli };
+
+  if (kohde.role === "officer" && rooli !== "officer") {
+    const rivi = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM users WHERE role = 'officer'"
+    ).first();
+
+    if ((rivi?.n ?? 0) <= 1) {
+      return {
+        error: "Tämä on viimeinen officer. Nimeä ensin toinen officer.",
+        status: 409,
+      };
+    }
+  }
+
+  await env.DB.prepare("UPDATE users SET role = ? WHERE id = ?")
+    .bind(rooli, kohde.id)
+    .run();
+
+  await kirjaa(env, actor, "VAIHDA_ROOLI", kohde.username, `${kohde.role} -> ${rooli}`);
+  return { ok: true, username: kohde.username, role: rooli };
+}
+
 /** Kayttaja lukitsee oman profiilinsa valmiiksi. */
 export async function lukitseOma(env, kayttaja) {
   await env.DB.prepare("UPDATE users SET locked = 1 WHERE id = ?")
