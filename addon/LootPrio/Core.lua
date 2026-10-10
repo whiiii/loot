@@ -9,7 +9,7 @@
 local ADDON, NS = ...
 
 NS.NIMI = ADDON
-NS.VERSIO = "0.4"
+NS.VERSIO = "0.5"
 NS.VARI = "|cffc9a227"   -- sama kulta kuin sivustolla
 NS.LOPPU = "|r"
 
@@ -36,6 +36,14 @@ local OLETUKSET = {
   -- Laukkulistan vahimmaislaatu: 2 vihrea, 3 sininen, 4 violetti.
   -- Ilman rajaa listassa olisi jokainen juomapullo ja kangaspala.
   laukkuLaatu = 3,
+
+  -- Assignatut itemit jotka odottavat luovutusta. Lista rivia
+  -- { itemId, nimi, itemNimi, linkki, aika, toimitettu }.
+  kaupat = {},
+
+  -- Taytetaanko kauppaikkuna itsestaan. Addon ei koskaan hyvaksy kauppaa,
+  -- vain asettaa tavarat paikoilleen.
+  taytaKauppa = true,
 
   -- Minimap-napin kulma asteina. Sijainti sailyy istuntojen yli.
   minimapKulma = 200,
@@ -168,6 +176,8 @@ SlashCmdList.LOOTPRIO = function(syote)
     NS.Avaa("jasenet")
   elseif komento == "historia" then
     NS.Avaa("historia")
+  elseif komento == "kauppa" then
+    NS.Avaa("kauppa")
   else
     NS.Tulosta("kayta: /lp  (avaa ikkunan)")
   end

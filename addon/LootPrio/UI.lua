@@ -87,6 +87,7 @@ end
 
 local NAVI = {
   { avain = "loot",     otsikko = "Loot" },
+  { avain = "kauppa",   otsikko = "Kauppa" },
   { avain = "jasenet",  otsikko = "Jäsenet" },
   { avain = "historia", otsikko = "Historia" },
   { avain = "tuonti",   otsikko = "Tuonti" },
@@ -164,6 +165,13 @@ local function paivitaTila()
   paa.tila:SetText(("%s%s|r  ·  %d jäsentä  ·  tuotu %s  ·  arvonnat: %s"):format(
     KULTA, NS.db.raidinNimi or "ei dataa", kpl, NS.db.tuotu or "—",
     NS.db.rollienNakyvyys == "raid" and "koko raidi" or "vain officerit"))
+
+  -- Luovuttamatta olevien maara navinappiin: se on tehtavalista, ja
+  -- tekematta jaanyt kauppa ei saa jaada valilehden taakse huomaamatta.
+  if navNapit.kauppa then
+    local odottaa = NS.OdottavatKaupat and #NS.OdottavatKaupat() or 0
+    navNapit.kauppa:SetText(odottaa > 0 and ("Kauppa (" .. odottaa .. ")") or "Kauppa")
+  end
 end
 
 --------------------------------------------------------------------------
@@ -426,6 +434,100 @@ local function piirraLoot()
         table.concat(puuttuu, ", ", 1, math.min(6, #puuttuu)),
         #puuttuu > 6 and ", …" or ""))
     y = y - 36
+  end
+
+  sisalto:SetHeight(math.max(1, -y))
+end
+
+--------------------------------------------------------------------------
+-- Näkymä: Kauppa
+--------------------------------------------------------------------------
+
+--- Luovutusta odottavat itemit.
+---
+--- Addon ei voi antaa laukussa olevaa itemia koodista kasin, mutta se
+--- tayttaa kauppaikkunan kun lootmaster avaa kaupan voittajan kanssa.
+--- Tama lista on se mika on viela antamatta.
+local function piirraKauppa()
+  local kehys = nakymat.kauppa
+
+  if not kehys.rakennettu then
+    kehys.rakennettu = true
+
+    kehys.ohje = kehys:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    kehys.ohje:SetPoint("TOPLEFT", 4, -4)
+    kehys.ohje:SetPoint("TOPRIGHT", -4, -4)
+    kehys.ohje:SetJustifyH("LEFT")
+
+    kehys.vieritys = teeVieritys(kehys, "LootPrioKauppaScroll")
+    kehys.vieritys:SetPoint("TOPLEFT", 0, -38)
+    kehys.vieritys:SetPoint("BOTTOMRIGHT", -26, 30)
+
+    local siivoa = nappi(kehys, 150, 22, "Siivoa toimitetut", function()
+      local n = NS.SiivoaKaupat()
+      NS.Tulosta(("%d toimitettua riviä poistettu."):format(n))
+    end)
+    siivoa:SetPoint("BOTTOMLEFT", 0, 4)
+  end
+
+  local jono = NS.OdottavatKaupat()
+
+  kehys.ohje:SetText(("Luovuttamatta: %s%d|r\nAvaa kauppa pelaajan kanssa — "
+    .. "itemit asettuvat paikoilleen itsestään."):format(KULTA, #jono))
+
+  local sisalto = kehys.vieritys.sisalto
+  tyhjenna(sisalto)
+  sisalto:SetWidth(kehys:GetWidth() - 26)
+
+  local y = -4
+
+  if #jono == 0 then
+    local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
+    rivi:SetPoint("TOPLEFT", 0, y)
+    teksti(rivi, "GameFontDisableSmall", 4, 0,
+      "Ei luovuttamattomia itemeitä.")
+    sisalto:SetHeight(30)
+    return
+  end
+
+  local otsikko = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
+  otsikko:SetPoint("TOPLEFT", 0, y)
+  teksti(otsikko, "GameFontNormalSmall", 4, 0, "ITEM")
+  teksti(otsikko, "GameFontNormalSmall", 200, 0, "SAAJA")
+  teksti(otsikko, "GameFontNormalSmall", 300, 0, "LAUKUSSA")
+  y = y - 18
+
+  -- Onko item oikeasti laukussa. Jos ei ole, kauppaikkuna jaa tyhjaksi -
+  -- ja syy on parempi nahda tassa kuin kaupan auettua.
+  local laukuissa = {}
+  for _, item in ipairs(NS.LaukkujenItemit(0)) do
+    laukuissa[item.itemId] = true
+  end
+
+  for _, r in ipairs(jono) do
+    local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
+    rivi:SetPoint("TOPLEFT", 0, y)
+    rivi:SetPoint("TOPRIGHT", 0, y)
+    rivi:SetHeight(18)
+
+    local nimi = r.itemNimi
+    if not nimi and r.itemId then nimi = GetItemInfo(r.itemId) end
+    nimi = nimi or ("item " .. tostring(r.itemId))
+    if nimi:len() > 28 then nimi = nimi:sub(1, 27) .. "…" end
+
+    teksti(rivi, "GameFontHighlightSmall", 4, 0, nimi)
+    teksti(rivi, "GameFontHighlightSmall", 200, 0, r.nimi or "?")
+    teksti(rivi, "GameFontHighlightSmall", 300, 0,
+      laukuissa[r.itemId] and (OK .. "kyllä|r") or (VIRHE .. "ei|r"))
+
+    -- Kaupan ulkopuolella annettu item pitaa voida merkita kasin: addon
+    -- nakee vain laukkujen muutokset omassa kaupassa.
+    local b = nappi(rivi, 80, 18, "Annettu", function()
+      NS.MerkitseToimitetuksi(r.indeksi)
+    end)
+    b:SetPoint("TOPRIGHT", -8, 0)
+
+    y = y - 18
   end
 
   sisalto:SetHeight(math.max(1, -y))
@@ -695,9 +797,19 @@ local function piirraAsetukset()
     end)
     kehys.ilmoita = ilmoita
 
+    local kauppa = CreateFrame("CheckButton", "LootPrioTaytaKauppa", kehys,
+      "UICheckButtonTemplate")
+    kauppa:SetPoint("TOPLEFT", 2, -98)
+    kauppa:SetSize(24, 24)
+    _G[kauppa:GetName() .. "Text"]:SetText("Täytä kauppaikkuna itsestään")
+    kauppa:SetScript("OnClick", function(self)
+      NS.db.taytaKauppa = self:GetChecked() and true or false
+    end)
+    kehys.kauppa = kauppa
+
     -- Laaturaja ratkaisee mita laukuista tarjotaan jaettavaksi.
     local laatuSelite = kehys:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    laatuSelite:SetPoint("TOPLEFT", 6, -110)
+    laatuSelite:SetPoint("TOPLEFT", 6, -124)
     laatuSelite:SetText("Jaettavien vähimmäislaatu:")
 
     local laatuNapit = {
@@ -713,7 +825,7 @@ local function piirraAsetukset()
         NS.db.laukkuLaatu = l.laatu
         piirraAsetukset()
       end)
-      b:SetPoint("TOPLEFT", lx, -130)
+      b:SetPoint("TOPLEFT", lx, -144)
       kehys.laatuNapit[l.laatu] = b
       lx = lx + 78
     end
@@ -721,11 +833,11 @@ local function piirraAsetukset()
     local testi = nappi(kehys, 160, 24, "Käynnistä testi", function()
       if NS.AloitaTesti() then naytaNakyma("loot") end
     end)
-    testi:SetPoint("TOPLEFT", 4, -162)
+    testi:SetPoint("TOPLEFT", 4, -176)
 
     local testiSelite = kehys:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-    testiSelite:SetPoint("TOPLEFT", 6, -190)
-    testiSelite:SetPoint("TOPRIGHT", -6, -190)
+    testiSelite:SetPoint("TOPLEFT", 6, -204)
+    testiSelite:SetPoint("TOPRIGHT", -6, -204)
     testiSelite:SetJustifyH("LEFT")
     testiSelite:SetText("Tekee neljä kuviteltua loottia tuoduista valinnoista ja "
       .. "arpoo niihin vastaukset. Assign kirjaa historiaan mutta ei koske "
@@ -738,11 +850,12 @@ local function piirraAsetukset()
       paivitaTila()
       naytaNakyma("jasenet")
     end)
-    tyhjennaProfiilit:SetPoint("TOPLEFT", 4, -234)
+    tyhjennaProfiilit:SetPoint("TOPLEFT", 4, -248)
   end
 
   kehys.valinta:SetChecked(NS.db.rollienNakyvyys == "raid")
   kehys.ilmoita:SetChecked(NS.db.ilmoitaVoittaja)
+  kehys.kauppa:SetChecked(NS.db.taytaKauppa ~= false)
 
   -- Valittu laaturaja jaa pohjaan, jotta nykyinen asetus nakyy.
   for laatu, b in pairs(kehys.laatuNapit) do
@@ -765,6 +878,7 @@ function NS.PaivitaNakyma(avain)
   paivitaTila()
 
   if avain == "loot" then piirraLoot()
+  elseif avain == "kauppa" then piirraKauppa()
   elseif avain == "jasenet" then piirraJasenet()
   elseif avain == "historia" then piirraHistoria()
   elseif avain == "tuonti" then piirraTuonti()
@@ -785,6 +899,11 @@ function NS.PaivitaAsetusUI() NS.PaivitaNakyma(nykyinen) end
 local valinta
 local valitut = {}
 
+-- Kasin linkatut itemit. Kaikki jaettava ei ole lootmasterin laukussa:
+-- item voi olla toisen pelaajan hallussa tai jo kaupattu vaarin, eika jako
+-- saa olla siita kiinni.
+local manuaaliset = {}
+
 --- Ikkuna, josta officer poimii jaettavat itemit laukuistaan.
 ---
 --- Lista on rajattu puettaviin ja riittavan hyviin itemeihin: ilman
@@ -793,7 +912,7 @@ function NS.AvaaValinta()
   if not valinta then
     valinta = CreateFrame("Frame", "LootPrioValinta", UIParent,
       "BasicFrameTemplateWithInset")
-    valinta:SetSize(460, 420)
+    valinta:SetSize(460, 460)
     valinta:SetPoint("CENTER")
     valinta:SetMovable(true)
     valinta:EnableMouse(true)
@@ -804,13 +923,54 @@ function NS.AvaaValinta()
     valinta.TitleText:SetText("LootPrio — valitse jaettavat")
     tinsert(UISpecialFrames, "LootPrioValinta")
 
+    -- Linkkikentta: shift-klikkaus itemista liittaa linkin kohdistettuun
+    -- kenttaan, joten tahan saa itemin mista tahansa - laukusta, chatista
+    -- tai toisen pelaajan viestista.
+    local linkkiOhje = valinta:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+    linkkiOhje:SetPoint("TOPLEFT", 14, -32)
+    linkkiOhje:SetText("Lisää item käsin: shift-klikkaa item kenttään ja paina Lisää.")
+
+    local kentta = CreateFrame("EditBox", "LootPrioValintaKentta", valinta,
+      "InputBoxTemplate")
+    kentta:SetSize(300, 20)
+    kentta:SetPoint("TOPLEFT", 18, -48)
+    kentta:SetAutoFocus(false)
+    valinta.kentta = kentta
+
+    local function lisaaLinkki()
+      local item = NS.LinkistaItem(kentta:GetText())
+      if not item then
+        NS.Tulosta("kenttaan ei liitetty kelvollista item-linkkia.")
+        return
+      end
+
+      manuaaliset[#manuaaliset + 1] = item
+      valitut["m:" .. #manuaaliset] = true
+      kentta:SetText("")
+      NS.PaivitaValinta()
+    end
+
+    kentta:SetScript("OnEnterPressed", lisaaLinkki)
+    kentta:SetScript("OnEscapePressed", function(self)
+      self:SetText("")
+      self:ClearFocus()
+    end)
+
+    local lisaa = nappi(valinta, 80, 22, "Lisää", lisaaLinkki)
+    lisaa:SetPoint("TOPLEFT", 326, -47)
+
     local vieritys = teeVieritys(valinta, "LootPrioValintaScroll")
-    vieritys:SetPoint("TOPLEFT", 12, -32)
+    vieritys:SetPoint("TOPLEFT", 12, -76)
     vieritys:SetPoint("BOTTOMRIGHT", -32, 56)
     valinta.vieritys = vieritys
 
     valinta.aloita = nappi(valinta, 150, 24, "Aloita jako", function()
       local lista = {}
+
+      for i, item in ipairs(manuaaliset) do
+        if valitut["m:" .. i] then lista[#lista + 1] = item end
+      end
+
       for _, item in ipairs(NS.LaukkujenItemit()) do
         local avain = item.laukku .. ":" .. item.paikka
         if valitut[avain] then lista[#lista + 1] = item end
@@ -827,6 +987,7 @@ function NS.AvaaValinta()
     valinta.aloita:SetPoint("BOTTOMLEFT", 14, 14)
 
     local kaikki = nappi(valinta, 100, 24, "Valitse kaikki", function()
+      for i in ipairs(manuaaliset) do valitut["m:" .. i] = true end
       for _, item in ipairs(NS.LaukkujenItemit()) do
         valitut[item.laukku .. ":" .. item.paikka] = true
       end
@@ -836,12 +997,15 @@ function NS.AvaaValinta()
 
     local eiMitaan = nappi(valinta, 90, 24, "Tyhjennä", function()
       wipe(valitut)
+      wipe(manuaaliset)
       NS.PaivitaValinta()
     end)
     eiMitaan:SetPoint("BOTTOMLEFT", 276, 14)
   end
 
   wipe(valitut)
+  wipe(manuaaliset)
+  valinta.kentta:SetText("")
   valinta:Show()
   NS.PaivitaValinta()
 end
@@ -855,23 +1019,24 @@ function NS.PaivitaValinta()
 
   local itemit = NS.LaukkujenItemit()
   local y = -4
+  local n = 0
 
-  if #itemit == 0 then
+  if #itemit == 0 and #manuaaliset == 0 then
     local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
     rivi:SetPoint("TOPLEFT", 0, y)
     teksti(rivi, "GameFontDisableSmall", 4, 0,
       "Laukuissa ei ole jaettavia itemeitä.\n\n"
       .. "Lista näyttää puettavat itemit joiden laatu on\n"
-      .. "vähintään sininen. Rajan voi muuttaa Asetuksista.")
-    sisalto:SetHeight(70)
+      .. "vähintään sininen. Rajan voi muuttaa Asetuksista.\n\n"
+      .. "Voit myös linkata itemin käsin yllä olevaan kenttään.")
+    sisalto:SetHeight(84)
     valinta.aloita:SetText("Aloita jako")
     return
   end
 
-  local n = 0
-
-  for _, item in ipairs(itemit) do
-    local avain = item.laukku .. ":" .. item.paikka
+  --- Yksi rivi: rasti, nimi ja kysynta. Sama muoto kasin linkatulle ja
+  --- laukusta loytyneelle, jottei jako riipu siita mista item tuli.
+  local function piirraRivi(avain, item, poistaIndeksi)
     if valitut[avain] then n = n + 1 end
 
     local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
@@ -889,17 +1054,48 @@ function NS.PaivitaValinta()
     end)
 
     teksti(rivi, "GameFontHighlightSmall", 28, -4,
-      varilla(item.laatu, item.nimi))
+      varilla(item.laatu, item.nimi)
+      .. (poistaIndeksi and (" " .. HIMMEA .. "(käsin)|r") or ""))
 
-    -- Montako on jo varannut taman: officer nakee heti onko itemille
-    -- kysyntaa vai meneeko se joka tapauksessa vendorille.
+    -- Montako paikalla olevaa on varannut taman: officer nakee heti onko
+    -- itemille kysyntaa vai meneeko se joka tapauksessa vendorille.
     local halukkaita = #NS.KukaHaluaaPaikalla(item.itemId)
     if halukkaita > 0 then
       teksti(rivi, "GameFontHighlightSmall", 330, -4,
         KULTA .. halukkaita .. " prio|r")
     end
 
+    if poistaIndeksi then
+      local b = nappi(rivi, 24, 18, "x", function()
+        -- Avaimet ovat indekseja, joten poisto siirtaa niita. Rastit on
+        -- numeroitava uudelleen samalla - muuten rasti jaisi vaaran
+        -- itemin kohdalle.
+        -- false eika nil, jotta table.remove saa yhtenaisen taulukon:
+        -- aukkoinen taulukko ei sailo pituuttaan luotettavasti.
+        local tila, pituus = {}, #manuaaliset
+        for i = 1, pituus do tila[i] = valitut["m:" .. i] and true or false end
+
+        table.remove(manuaaliset, poistaIndeksi)
+        table.remove(tila, poistaIndeksi)
+
+        for i = 1, pituus do valitut["m:" .. i] = tila[i] or nil end
+
+        NS.PaivitaValinta()
+      end)
+      b:SetPoint("TOPRIGHT", -4, -2)
+    end
+
     y = y - 22
+  end
+
+  -- Kasin linkatut ylimmaksi: ne ovat juuri lisattyja ja siksi niita
+  -- katsotaan.
+  for i, item in ipairs(manuaaliset) do
+    piirraRivi("m:" .. i, item, i)
+  end
+
+  for _, item in ipairs(itemit) do
+    piirraRivi(item.laukku .. ":" .. item.paikka, item, nil)
   end
 
   sisalto:SetHeight(math.max(1, -y))

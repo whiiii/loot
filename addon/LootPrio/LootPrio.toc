@@ -2,7 +2,7 @@
 ## Title: LootPrio
 ## Notes: Raidin loottiprioriteetit killan sivustolta.
 ## Author: Kilta
-## Version: 0.4
+## Version: 0.5
 ## SavedVariables: LootPrioDB
 
 # Lataamisjarjestys on merkitseva: Core maarittelee nimiavaruuden ja
@@ -12,4 +12,5 @@ Data.lua
 Comm.lua
 Jako.lua
 Loot.lua
+Kauppa.lua
 UI.lua

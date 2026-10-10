@@ -17,19 +17,46 @@ local ADDON, NS = ...
 --------------------------------------------------------------------------
 
 -- Laukkurajapinta vaihtoi paikkaa kesken Classicin elinkaaren. Molemmat
--- tuetaan, jottei addon ole sidottu yhteen asiakasversioon.
-local function laukunKoko(laukku)
+-- tuetaan, jottei addon ole sidottu yhteen asiakasversioon. Nimiavaruudessa,
+-- koska myos Kauppa.lua etsii itemeita laukuista.
+function NS.LaukunKoko(laukku)
   if C_Container and C_Container.GetContainerNumSlots then
     return C_Container.GetContainerNumSlots(laukku) or 0
   end
   return (GetContainerNumSlots and GetContainerNumSlots(laukku)) or 0
 end
 
-local function laukunLinkki(laukku, paikka)
+function NS.LaukunLinkki(laukku, paikka)
   if C_Container and C_Container.GetContainerItemLink then
     return C_Container.GetContainerItemLink(laukku, paikka)
   end
   return GetContainerItemLink and GetContainerItemLink(laukku, paikka)
+end
+
+local laukunKoko, laukunLinkki = NS.LaukunKoko, NS.LaukunLinkki
+
+--- Itemi linkista jaettavaksi riviksi.
+---
+--- Tata kautta tulevat ne itemit jotka officer linkkaa kasin: kaikki ei ole
+--- aina lootmasterin laukussa, eika jako saa olla siita kiinni.
+function NS.LinkistaItem(linkki)
+  if type(linkki) ~= "string" then return nil end
+
+  local itemId = NS.ItemIdLinkista(linkki)
+  if not itemId then return nil end
+
+  -- Linkin voi liittaa myos pelkkana tekstina, joten varmistetaan etta
+  -- peli tuntee itemin. GetItemInfo palauttaa nil jos tietoa ei ole vielä
+  -- ladattu - silloin kaytetaan itemId:ta ja nimi taydentyy myohemmin.
+  local nimi, kokoLinkki, laatu = GetItemInfo(itemId)
+
+  return {
+    itemId = itemId,
+    linkki = kokoLinkki or linkki,
+    nimi = nimi or ("item " .. itemId),
+    laatu = laatu or 4,
+    manuaalinen = true,
+  }
 end
 
 --- Jaettavaksi kelpaavat itemit laukuista.
@@ -93,6 +120,12 @@ function NS.Jaa(item, nimi)
   NS.KirjaaJako(NS.sessio.id, item.indeksi, nimi, koodi, luku)
 
   if not item.testi then
+    -- Jono kauppaan vain jaon tehneelle: tavara on hanen laukussaan, ja
+    -- vain han voi sen luovuttaa.
+    if NS.LisaaKauppaan and NS.sessio.lootmaster == NS.OmaNimi() then
+      NS.LisaaKauppaan(item.itemId, nimi, item.nimi, item.linkki)
+    end
+
     NS.Comm.Laheta("JAETTU", ("%s %d %s %s %d"):format(
       NS.sessio.id, item.indeksi, nimi, koodi or "muu", luku or 0))
 

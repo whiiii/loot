@@ -38,6 +38,10 @@ itemit ensin omiin laukkuihinsa ja laittaa ne sitten jakoon.
 2. **Loot → Jaa lootit.** Ikkuna listaa laukkujen puettavat itemit ja
    kertoo jokaisen kohdalla montako paikalla olevaa on varannut sen.
    Valitse jaettavat ja paina *Aloita jako (n)*.
+
+   Kaikkea ei tarvitse olla laukussa: **shift-klikkaa item ikkunan
+   kenttään** ja paina *Lisää*, niin se tulee mukaan jakoon. Näin voi
+   jakaa myös itemin joka on jonkun toisen hallussa tai mennyt vikaan.
 3. **Jokaisen raidilaisen ikkuna aukeaa** samaan näkymään. Itemit ovat
    välilehtinä, ja jokaisen kohdalla vastataan yhdellä napilla:
    **LootPrio, Main spec, Off spec, Muu** tai **Pass**.
@@ -49,6 +53,27 @@ itemit ensin omiin laukkuihinsa ja laittaa ne sitten jakoon.
    mikä item meni kenelle ja millä perusteella.
 6. **Jaettu item katoaa välilehdistä** ja jää Historia-välilehdelle.
    Jäljellä on aina vain se mikä on vielä päättämättä.
+7. **Avaa kauppa voittajan kanssa.** Assignatut itemit asettuvat
+   vaihtopaikoille itsestään — ks. *Kauppa*-välilehti alla.
+
+## Kauppa
+
+Addon ei voi antaa laukussa olevaa itemiä koodista käsin, mutta se voi
+täyttää kauppaikkunan. Kun avaat kaupan pelaajan kanssa jolle on
+assignattu itemejä, ne **asettuvat vaihtopaikoille itsestään**.
+
+Addon ei koskaan hyväksy kauppaa. *Kauppa*-nappia painat itse: väärin
+mennyttä kauppaa ei voi perua, ja silmä ehtii aina katsoa kerran.
+
+**Kauppa-välilehti** on luovuttamattomien lista. Siinä näkyy item, saaja
+ja se löytyykö item vielä omista laukuista — jos ei löydy, kauppaikkuna
+jäisi tyhjäksi, ja syy on parempi nähdä tässä kuin kaupan auettua.
+*Annettu* merkitsee rivin käsin, jos item vaihtoi omistajaa muuten.
+
+Toimitetuksi merkitseminen perustuu laukkujen kappalemäärään kaupan
+ennen ja jälkeen, joten **peruttu kauppa ei merkitse mitään annetuksi**.
+
+Automaatin voi kytkeä pois Asetuksista.
 
 Kaikki valitut itemit menevät jakoon, eivät vain profiileissa olevat —
 profiili on yksi peruste neljästä, ei pääsyvaatimus.
@@ -79,6 +104,7 @@ raidille eikä pelin loottiin kosketa.
 | `/lp tuo` | avaa tuonnin |
 | `/lp jasenet` | avaa jäsenlistan |
 | `/lp historia` | avaa historian |
+| `/lp kauppa` | avaa luovuttamattomien listan |
 
 ## Mitä addon ei voi tehdä
 
@@ -99,5 +125,10 @@ ovat jokaisen koneella riippumatta asetuksesta. "Vain officerit" on
 näkyvyysvalinta, ei salaisuus - muokattu addon näkisi ne silti.
 
 **Siirtää itemiä laukusta toiselle pelaajalle.** Pelin oma lootin jako
-toimii vain avoimen loottiruudun kautta. Siksi *Assign* kirjaa päätöksen ja
-kertoo sen raidille, mutta tavaran lootmaster antaa itse kaupassa.
+toimii vain avoimen loottiruudun kautta. Addon voi täyttää kauppaikkunan,
+mutta *Kauppa*-nappia painaa ihminen.
+
+**Kaupata sidottua itemiä.** Jos item sitoutuu lootmasteriin kun hän
+nostaa sen laukkuun, sitä ei voi enää antaa kenellekään — silloin
+master loot on ainoa tapa. Tämä riippuu siitä onko palvelimella
+kaupankäyntiaikaa sidotuille itemeille.
