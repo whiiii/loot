@@ -1,17 +1,61 @@
-/* Loot — yhteinen tyyli.
-   Tumma, matala kontrasti ja kullanruskea korostus; tarkoitus on olla
-   luettava pitkään eika kilpailla itemien ikonien kanssa. */
+/* Loot — värit, fontit ja peruselementit.
+ *
+ * Kehykset ovat lähes värittömiä tarkoituksella. Ruudulla on jo kaksi
+ * väriasteikkoa joilla on merkitys — luokkavärit ja itemien laatuvärit —
+ * ja jos tausta, reunat ja napit kilpailevat niiden kanssa, kumpikaan ei
+ * erotu. Kulta esiintyy harvoin ja siksi se huomataan.
+ */
 
 :root {
   color-scheme: dark;
-  --tausta:   #14100c;
-  --paneeli:  #1c1812;
-  --reuna:    #342c22;
-  --teksti:   #e8e0d4;
-  --himmea:   #9b9183;
-  --korostus: #c8a24a;
-  --virhe:    #e08c8c;
-  --ok:       #9ad17a;
+
+  /* Pinnat tummasta vaaleaan. Kolme riittää: pohja, paneeli, kohotettu. */
+  --tausta:       #0d0e10;
+  --syva:         #090a0c;
+  --paneeli:      #15171a;
+  --paneeli-ylos: #1c1f23;
+  --hover:        #22262b;
+
+  --reuna:        #262a2f;
+  --reuna-vahva:  #3a4149;
+
+  --teksti:       #e2e5e9;
+  --himmea:       #8b9299;
+  --vaimea:       #5a6066;
+
+  /* Kulta. Yksi sävy korostukseen, yksi tumma teksti kullan päälle. */
+  --kulta:        #c9a227;
+  --kulta-vaalea: #e3c468;
+  --kulta-tumma:  #6b5518;
+  --kulta-teksti: #14100a;
+
+  /* Tilavärit. Käytetään vain merkitykseen, ei koristeluun. */
+  --ok:           #8fd17a;
+  --ok-reuna:     #3f5d33;
+  --ok-tausta:    #131a10;
+
+  --virhe:        #e08c8c;
+  --virhe-reuna:  #5e3029;
+  --virhe-tausta: #1c1113;
+
+  --huomio:        #e3c468;
+  --huomio-reuna:  #5c4a1c;
+  --huomio-tausta: #1a1610;
+
+  --katselu:        #7fb3cc;
+  --katselu-reuna:  #2a4a59;
+  --katselu-tausta: #0f171c;
+
+  /* Terävä kulma lukee työkaluna, pyöreä kuluttajasovelluksena. */
+  --pyoristys:     4px;
+  --pyoristys-iso: 6px;
+
+  /* Otsikoissa antiikva, leipätekstissä groteski. Yksi koristeellinen
+     fontti riittää tunnelmaan; jos sitä käyttää kaikkialla, teksti
+     muuttuu lukukelvottomaksi. */
+  --fontti:         "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --fontti-otsikko: "Marcellus", Georgia, "Times New Roman", serif;
+  --fontti-mono:    "IBM Plex Mono", ui-monospace, Consolas, monospace;
 }
 
 * { box-sizing: border-box; }
@@ -21,8 +65,17 @@ body {
   min-height: 100vh;
   background: var(--tausta);
   color: var(--teksti);
-  font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+  font: 400 15px/1.6 var(--fontti);
+  -webkit-font-smoothing: antialiased;
 }
+
+h1, h2, h3 {
+  font-family: var(--fontti-otsikko);
+  font-weight: 400;
+  letter-spacing: .02em;
+}
+
+a { color: var(--kulta-vaalea); }
 
 .keskita {
   min-height: 100vh;
@@ -37,66 +90,70 @@ body {
   max-width: 340px;
   background: var(--paneeli);
   border: 1px solid var(--reuna);
-  border-radius: 12px;
-  padding: 1.75rem;
+  border-radius: var(--pyoristys-iso);
+  padding: 2rem 1.75rem 1.75rem;
 }
 
 h1 {
-  margin: 0 0 .25rem;
-  font-size: 1.35rem;
-  font-weight: 650;
-  letter-spacing: .01em;
+  margin: 0 0 .35rem;
+  font-size: 1.6rem;
+  letter-spacing: .06em;
 }
 
 p.selite {
-  margin: 0 0 1.5rem;
+  margin: 0 0 1.75rem;
   color: var(--himmea);
-  font-size: .88rem;
+  font-size: .86rem;
 }
 
 label {
   display: block;
-  margin-bottom: .3rem;
-  font-size: .82rem;
+  margin-bottom: .35rem;
+  font-size: .72rem;
   color: var(--himmea);
+  text-transform: uppercase;
+  letter-spacing: .08em;
 }
 
 input[type="text"],
 input[type="password"] {
   width: 100%;
-  margin-bottom: 1rem;
+  margin-bottom: 1.1rem;
   padding: .6rem .7rem;
-  background: #120f0a;
+  background: var(--syva);
   border: 1px solid var(--reuna);
-  border-radius: 7px;
+  border-radius: var(--pyoristys);
   color: var(--teksti);
   font: inherit;
 }
 
 input:focus {
   outline: none;
-  border-color: var(--korostus);
+  border-color: var(--kulta-tumma);
+  box-shadow: 0 0 0 1px var(--kulta-tumma);
 }
 
 button {
   width: 100%;
   padding: .65rem;
-  background: var(--korostus);
-  border: none;
-  border-radius: 7px;
-  color: #1a1407;
+  background: var(--kulta);
+  border: 1px solid var(--kulta);
+  border-radius: var(--pyoristys);
+  color: var(--kulta-teksti);
   font: inherit;
-  font-weight: 650;
+  font-weight: 600;
+  letter-spacing: .02em;
   cursor: pointer;
+  transition: filter .15s, background .15s, border-color .15s;
 }
 
-button:hover { filter: brightness(1.08); }
-button:disabled { opacity: .55; cursor: default; filter: none; }
+button:hover { filter: brightness(1.12); }
+button:disabled { opacity: .5; cursor: default; filter: none; }
 
 .viesti {
   margin-top: 1rem;
   min-height: 1.3em;
-  font-size: .85rem;
+  font-size: .84rem;
   color: var(--virhe);
 }
 

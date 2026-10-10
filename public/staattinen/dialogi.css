@@ -21,17 +21,19 @@
   max-width: 400px;
   background: var(--paneeli);
   border: 1px solid var(--reuna);
-  border-top: 3px solid var(--korostus);
-  border-radius: 12px;
+  border-top: 3px solid var(--kulta);
+  border-radius: var(--pyoristys-iso);
   padding: 1.4rem 1.5rem 1.25rem;
   box-shadow: 0 18px 50px rgba(0, 0, 0, .65);
 }
 
 .dlg h3 {
+  font-family: var(--fontti-otsikko);
   margin: 0 0 .5rem;
   font-size: 1.05rem;
-  font-weight: 650;
-  color: var(--korostus);
+  font-weight: 400;
+  letter-spacing: .03em;
+  color: var(--kulta);
 }
 
 .dlg p {
@@ -46,13 +48,13 @@
   width: 100%;
   margin: 0 0 1rem;
   padding: .6rem .7rem;
-  background: #120f0a;
+  background: var(--syva);
   border: 1px solid var(--reuna);
-  border-radius: 7px;
+  border-radius: var(--pyoristys);
   color: var(--teksti);
   font: inherit;
 }
-.dlg-syote:focus { outline: none; border-color: var(--korostus); }
+.dlg-syote:focus { outline: none; border-color: var(--kulta); }
 .dlg-syote[hidden] { display: none; }
 
 .dlg-virhe {
@@ -79,15 +81,15 @@
   border: 1px solid var(--reuna);
   color: var(--teksti);
 }
-.dlg-peruuta:hover { background: #241e16; filter: none; }
+.dlg-peruuta:hover { background: var(--hover); filter: none; }
 
 /* Varoitusmuoto: sama rakenne, eri vari. Kaytetaan siihen kohtaan jossa
    seuraus on peruuttamaton ilman toisen ihmisen apua. */
 .dlg.varoitus {
-  border-top-color: #c75c4a;
+  border-top-color: var(--virhe-reuna);
 }
-.dlg.varoitus h3 { color: #e08c8c; }
+.dlg.varoitus h3 { color: var(--virhe); }
 .dlg.varoitus .dlg-vahvista {
-  background: #c75c4a;
-  color: #1a0d0a;
+  background: var(--virhe-reuna);
+  color: var(--kulta-teksti);
 }
