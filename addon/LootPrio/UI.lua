@@ -170,25 +170,49 @@ end
 -- Näkymä: Loot
 --------------------------------------------------------------------------
 
+--- Itemin nimi ja laatu. Lootmasterilla ne tulevat loottiruudusta, muilla
+--- pelin omasta tietokannasta - joka ei valttamatta tunne itemia heti.
+local function itemNimi(item)
+  if item.nimi then return item.nimi, item.laatu or 1 end
+  local nimi, _, laatu = GetItemInfo(item.itemId)
+  return nimi or ("item " .. item.itemId), laatu or 1
+end
+
 local function piirraLoot()
   local kehys = nakymat.loot
 
-  if not kehys.vieritys then
+  if not kehys.rakennettu then
+    kehys.rakennettu = true
+
+    kehys.valilehdet = CreateFrame("Frame", nil, kehys)
+    kehys.valilehdet:SetPoint("TOPLEFT", 0, 0)
+    kehys.valilehdet:SetPoint("TOPRIGHT", 0, 0)
+    kehys.valilehdet:SetHeight(26)
+
     kehys.vieritys = teeVieritys(kehys, "LootPrioLootScroll")
+    kehys.vieritys:SetPoint("TOPLEFT", 0, -30)
     kehys.vieritys:SetPoint("BOTTOMRIGHT", -26, 28)
 
-    kehys.lopeta = nappi(kehys, 120, 22, "Päätä jako", function()
+    kehys.napit = CreateFrame("Frame", nil, kehys)
+    kehys.napit:SetPoint("BOTTOMLEFT", 0, 0)
+    kehys.napit:SetPoint("BOTTOMRIGHT", 0, 0)
+    kehys.napit:SetHeight(26)
+
+    kehys.lopeta = nappi(kehys.napit, 110, 22, "Päätä jako", function()
       NS.PaataSessio()
     end)
-    kehys.lopeta:SetPoint("BOTTOMLEFT", 0, 2)
+    kehys.lopeta:SetPoint("BOTTOMLEFT", 0, 0)
   end
+
+  tyhjenna(kehys.valilehdet)
+  tyhjenna(kehys.napit)
 
   local sisalto = kehys.vieritys.sisalto
   tyhjenna(sisalto)
   sisalto:SetWidth(kehys:GetWidth() - 26)
 
   local sessio = NS.sessio
-  kehys.lopeta:SetShown(sessio ~= nil)
+  kehys.lopeta:SetShown(sessio ~= nil and NS.OnLootMaster())
 
   if not sessio then
     local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
@@ -200,64 +224,145 @@ local function piirraLoot()
     return
   end
 
+  -- Välilehdet: yksi item kerrallaan, jaetut jäävät näkyviin merkittyinä.
+  local x = 0
+  for _, item in ipairs(sessio.itemit) do
+    local nimi = itemNimi(item)
+    local lyhyt = nimi:len() > 14 and (nimi:sub(1, 13) .. "…") or nimi
+
+    local b = nappi(kehys.valilehdet, 98, 22,
+      (item.jaettu and "✓ " or "") .. lyhyt,
+      function()
+        sessio.valittu = item.indeksi
+        NS.PaivitaNakyma("loot")
+      end)
+    b:SetPoint("TOPLEFT", x, 0)
+    if sessio.valittu == item.indeksi then b:LockHighlight() end
+    lisaaLapsi(kehys.valilehdet, b)
+
+    x = x + 100
+  end
+
+  local item = sessio.itemit[sessio.valittu] or sessio.itemit[1]
+  if not item then return end
+
+  local nimi, laatu = itemNimi(item)
   local y = -4
 
-  for _, item in ipairs(sessio.itemit) do
+  local otsikko = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
+  otsikko:SetPoint("TOPLEFT", 0, y)
+  otsikko:SetPoint("TOPRIGHT", 0, y)
+  otsikko:SetHeight(20)
+  teksti(otsikko, "GameFontNormal", 4, 0,
+    varilla(laatu, nimi)
+    .. (item.jaettu and ("  " .. OK .. "→ " .. (item.saaja or "?") .. "|r") or ""))
+  y = y - 24
+
+  -- Omat vastausnapit, jos itemia ei ole viela jaettu.
+  if not item.jaettu then
+    local napit = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
+    napit:SetPoint("TOPLEFT", 0, y)
+    napit:SetPoint("TOPRIGHT", 0, y)
+    napit:SetHeight(24)
+
+    local valittu = sessio.omaVastaus[item.indeksi]
+    local nx = 4
+
+    for _, v in ipairs(NS.VASTAUKSET) do
+      -- LootPrio vain jos item on oikeasti omassa profiilissa. Sivusto on
+      -- se joka ratkaisee, ei pelaajan oma arvio.
+      local sallittu = (v.koodi ~= "prio") or NS.OmassaProfiilissa(item.itemId)
+      local leveys = (v.koodi == "pass") and 50 or 68
+
+      local b = nappi(napit, leveys, 20, v.nimi, function()
+        NS.Vastaa(item.indeksi, v.koodi)
+      end)
+      b:SetPoint("TOPLEFT", nx, 0)
+      b:SetEnabled(sallittu and not valittu)
+      if valittu == v.koodi then b:LockHighlight() end
+
+      nx = nx + leveys + 4
+    end
+
+    y = y - 28
+  end
+
+  -- Vastaukset. Lootmasterin asetuksesta riippuu naytetaanko kaikkien
+  -- vastaukset vai vain oma.
+  local kaikki = NS.NaytaKaikkiVastaukset()
+  local vastaukset = NS.ItemienVastaukset(item)
+
+  if not kaikki then
+    local omat = {}
+    for _, v in ipairs(vastaukset) do
+      if v.nimi == NS.OmaNimi() then omat[#omat + 1] = v end
+    end
+    vastaukset = omat
+  end
+
+  if #vastaukset == 0 then
     local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
     rivi:SetPoint("TOPLEFT", 0, y)
-    rivi:SetPoint("TOPRIGHT", 0, y)
+    rivi:SetHeight(18)
+    teksti(rivi, "GameFontDisableSmall", 8, 0, "ei vastauksia vielä")
+    y = y - 20
+  else
+    local otsikot = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
+    otsikot:SetPoint("TOPLEFT", 0, y)
+    otsikot:SetHeight(16)
+    teksti(otsikot, "GameFontNormalSmall", 8, 0, "VASTAUS")
+    teksti(otsikot, "GameFontNormalSmall", 92, 0, "ROLL")
+    teksti(otsikot, "GameFontNormalSmall", 130, 0, "PELAAJA")
+    teksti(otsikot, "GameFontNormalSmall", 250, 0, "SAATU")
+    y = y - 18
 
-    teksti(rivi, "GameFontNormal", 4, 0,
-      varilla(item.laatu, item.nimi)
-      .. (item.jaettu and ("  " .. HIMMEA .. "(jaettu)|r") or ""))
+    for _, v in ipairs(vastaukset) do
+      local vast = NS.VASTAUS[v.koodi]
 
-    local korkeus = 20
-    local vastaukset = NS.ItemienVastaukset(item)
+      local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
+      rivi:SetPoint("TOPLEFT", 0, y)
+      rivi:SetPoint("TOPRIGHT", 0, y)
+      rivi:SetHeight(18)
 
-    if #vastaukset == 0 then
-      teksti(rivi, "GameFontDisableSmall", 16, -korkeus, "ei vastauksia vielä")
-      korkeus = korkeus + 18
-    else
-      for _, v in ipairs(vastaukset) do
-        local vast = NS.VASTAUS[v.koodi]
+      teksti(rivi, "GameFontHighlightSmall", 8, 0, vast.vari .. vast.nimi .. "|r")
+      teksti(rivi, "GameFontHighlightSmall", 92, 0,
+        KULTA .. (v.luku and tostring(v.luku) or "—") .. "|r")
 
-        -- Vaarin perusteltu prio merkitaan. Vastaus tulee pelaajan omalta
-        -- koneelta, mutta lootmasterilla on kaikkien profiilit - joten
-        -- vaite on tarkistettavissa.
-        local huomio = ""
-        if v.koodi == "prio" and not v.prioOk then
-          huomio = VIRHE .. " (ei profiilissa!)|r"
-        end
-
-        teksti(rivi, "GameFontHighlightSmall", 16, -korkeus,
-          ("%s%-10s|r %s%3s|r  %s%s"):format(
-            vast.vari, vast.nimi,
-            KULTA, v.luku and tostring(v.luku) or "—",
-            v.nimi, huomio))
-
-        if v.koodi ~= "pass" then
-          local b = nappi(rivi, 76, 18, "Assign", function()
-            NS.Jaa(item, v.nimi)
-          end)
-          b:SetPoint("TOPRIGHT", -8, -korkeus + 2)
-          b:SetEnabled(not item.jaettu)
-        end
-
-        korkeus = korkeus + 20
+      -- Vaarin perusteltu prio merkitaan. Tarkistus tehdaan jokaisella
+      -- koneella tuotuja profiileja vasten, joten vaite nakyy kaikille.
+      local huomio = ""
+      if v.koodi == "prio" and not v.prioOk then
+        huomio = VIRHE .. " (!)|r"
       end
-    end
+      teksti(rivi, "GameFontHighlightSmall", 130, 0, v.nimi .. huomio)
 
-    local puuttuu = NS.Vastaamatta(item)
-    if #puuttuu > 0 then
-      teksti(rivi, "GameFontDisableSmall", 16, -korkeus,
-        ("odottaa: %d (%s%s)"):format(#puuttuu,
-          table.concat(puuttuu, ", ", 1, math.min(4, #puuttuu)),
-          #puuttuu > 4 and ", …" or ""))
-      korkeus = korkeus + 16
-    end
+      -- Montako itemia pelaaja on jo saanut. Lootmasterin tarkein luku
+      -- heti perusteen jalkeen.
+      teksti(rivi, "GameFontHighlightSmall", 250, 0,
+        (v.saatu > 0 and KULTA or HIMMEA) .. tostring(v.saatu) .. "|r")
 
-    rivi:SetHeight(korkeus + 6)
-    y = y - (korkeus + 10)
+      if NS.OnLootMaster() and not item.jaettu and v.koodi ~= "pass" then
+        local b = nappi(rivi, 70, 18, "Assign", function()
+          NS.Jaa(item, v.nimi)
+        end)
+        b:SetPoint("TOPRIGHT", -8, 0)
+      end
+
+      y = y - 18
+    end
+  end
+
+  local puuttuu = NS.Vastaamatta(item)
+  if #puuttuu > 0 and not item.jaettu and kaikki then
+    local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
+    rivi:SetPoint("TOPLEFT", 0, y - 6)
+    rivi:SetPoint("TOPRIGHT", 0, y - 6)
+    rivi:SetHeight(30)
+    teksti(rivi, "GameFontDisableSmall", 8, 0,
+      ("odottaa %d vastausta: %s%s"):format(#puuttuu,
+        table.concat(puuttuu, ", ", 1, math.min(6, #puuttuu)),
+        #puuttuu > 6 and ", …" or ""))
+    y = y - 36
   end
 
   sisalto:SetHeight(math.max(1, -y))
@@ -431,10 +536,9 @@ local function piirraAsetukset()
       "UICheckButtonTemplate")
     valinta:SetPoint("TOPLEFT", 2, -8)
     valinta:SetSize(24, 24)
-    _G[valinta:GetName() .. "Text"]:SetText("Näytä arvonnat koko raidille")
+    _G[valinta:GetName() .. "Text"]:SetText("Koko raidi näkee kaikkien vastaukset")
     valinta:SetScript("OnClick", function(self)
       NS.db.rollienNakyvyys = self:GetChecked() and "raid" or "officers"
-      if self:GetChecked() then NS.JaaRollit() end
       paivitaTila()
     end)
     kehys.valinta = valinta
@@ -443,8 +547,10 @@ local function piirraAsetukset()
     selite:SetPoint("TOPLEFT", 6, -36)
     selite:SetPoint("TOPRIGHT", -6, -36)
     selite:SetJustifyH("LEFT")
-    selite:SetText("Pois päältä numerot jäävät officereille: raidikanavaa ei voi "
-      .. "rajata osalle, joten niitä ei lähetetä lainkaan.")
+    selite:SetText("Pois päältä raiderit näkevät vain oman vastauksensa, "
+      .. "officerit kaikki. Asetus koskee vain sinun avaamiasi jakoja, ja se "
+      .. "on näkyvyysvalinta eikä salaisuus: tiedot kulkevat raidikanavalla "
+      .. "joka tapauksessa.")
 
     local ilmoita = CreateFrame("CheckButton", "LootPrioIlmoita", kehys,
       "UICheckButtonTemplate")
@@ -505,124 +611,6 @@ function NS.AvaaLootIkkuna() NS.Avaa("loot") end
 function NS.AvaaTuonti() NS.Avaa("tuonti") end
 function NS.PaivitaLootIkkuna() NS.PaivitaNakyma("loot") end
 function NS.PaivitaAsetusUI() NS.PaivitaNakyma(nykyinen) end
-
---------------------------------------------------------------------------
--- Raiderin vastausikkuna
---------------------------------------------------------------------------
-
-local vastausIkkuna
-
---- Itemin nimi ja laatu id:n perusteella.
----
---- Peli ei valttamatta tunne itemia heti: tiedot saapuvat omana
---- tapahtumanaan, jolloin ikkuna piirretaan uudelleen.
-local function itemTiedot(itemId)
-  local nimi, _, laatu = GetItemInfo(itemId)
-  return nimi or ("item " .. itemId), laatu or 1
-end
-
-function NS.AvaaVastausIkkuna()
-  if not NS.omaSessio then return end
-
-  if not vastausIkkuna then
-    vastausIkkuna = CreateFrame("Frame", "LootPrioVastaus", UIParent,
-      "BasicFrameTemplateWithInset")
-    vastausIkkuna:SetSize(430, 330)
-    vastausIkkuna:SetPoint("CENTER", 0, 120)
-    vastausIkkuna:SetMovable(true)
-    vastausIkkuna:EnableMouse(true)
-    vastausIkkuna:RegisterForDrag("LeftButton")
-    vastausIkkuna:SetScript("OnDragStart", vastausIkkuna.StartMoving)
-    vastausIkkuna:SetScript("OnDragStop", vastausIkkuna.StopMovingOrSizing)
-    vastausIkkuna:SetClampedToScreen(true)
-    vastausIkkuna.TitleText:SetText("LootPrio — vastaa")
-    tinsert(UISpecialFrames, "LootPrioVastaus")
-
-    local vieritys = teeVieritys(vastausIkkuna, "LootPrioVastausScroll")
-    vieritys:SetPoint("TOPLEFT", 12, -32)
-    vieritys:SetPoint("BOTTOMRIGHT", -32, 12)
-    vastausIkkuna.vieritys = vieritys
-  end
-
-  vastausIkkuna:Show()
-  NS.PaivitaVastausIkkuna()
-end
-
-function NS.SuljeVastausIkkuna()
-  if vastausIkkuna then vastausIkkuna:Hide() end
-end
-
-function NS.PaivitaVastausIkkuna()
-  if not vastausIkkuna or not vastausIkkuna:IsShown() then return end
-  if not NS.omaSessio then return end
-
-  local sisalto = vastausIkkuna.vieritys.sisalto
-  tyhjenna(sisalto)
-  sisalto:SetWidth(370)
-
-  local y = -4
-  local indeksit = {}
-  for indeksi in pairs(NS.omaSessio.itemit) do indeksit[#indeksit + 1] = indeksi end
-  table.sort(indeksit)
-
-  for _, indeksi in ipairs(indeksit) do
-    local item = NS.omaSessio.itemit[indeksi]
-    local nimi, laatu = itemTiedot(item.itemId)
-
-    local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
-    rivi:SetPoint("TOPLEFT", 0, y)
-    rivi:SetPoint("TOPRIGHT", 0, y)
-
-    teksti(rivi, "GameFontNormal", 4, 0, varilla(laatu, nimi))
-
-    local valittu = NS.omaSessio.vastattu[indeksi]
-    local x = 4
-
-    for _, v in ipairs(NS.VASTAUKSET) do
-      -- LootPrio vain jos item on oikeasti omassa profiilissa. Sivusto on
-      -- se joka ratkaisee, ei pelaajan oma arvio.
-      local sallittu = (v.koodi ~= "prio") or NS.OmassaProfiilissa(item.itemId)
-
-      local b = nappi(rivi, v.koodi == "pass" and 54 or 72, 20, v.nimi, function()
-        NS.Vastaa(indeksi, v.koodi)
-      end)
-      b:SetPoint("TOPLEFT", x, -22)
-      b:SetEnabled(sallittu and not valittu)
-
-      if valittu == v.koodi then b:LockHighlight() end
-
-      if not sallittu then
-        b:SetScript("OnEnter", function(self)
-          GameTooltip:SetOwner(self, "ANCHOR_TOP")
-          GameTooltip:AddLine("Tämä item ei ole profiilissasi sivustolla.", 1, .6, .6)
-          GameTooltip:Show()
-        end)
-        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-      end
-
-      x = x + (v.koodi == "pass" and 58 or 76)
-    end
-
-    if valittu then
-      teksti(rivi, "GameFontDisableSmall", 4, -46,
-        "Vastattu: " .. (NS.VASTAUS[valittu] and NS.VASTAUS[valittu].nimi or valittu))
-      rivi:SetHeight(66)
-      y = y - 70
-    else
-      rivi:SetHeight(48)
-      y = y - 52
-    end
-  end
-
-  sisalto:SetHeight(math.max(1, -y))
-end
-
--- Itemin tiedot voivat saapua vasta ikkunan avaamisen jalkeen.
-local itemKehys = CreateFrame("Frame")
-itemKehys:RegisterEvent("GET_ITEM_INFO_RECEIVED")
-itemKehys:SetScript("OnEvent", function()
-  if NS.PaivitaVastausIkkuna then NS.PaivitaVastausIkkuna() end
-end)
 
 --------------------------------------------------------------------------
 -- Minimap-nappi
@@ -689,17 +677,3 @@ function NS.LuoMinimapNappi()
   NS.minimapNappi = b
 end
 
---------------------------------------------------------------------------
--- Muilta saadut arvonnat
---------------------------------------------------------------------------
-
-function NS.NaytaSaadutRollit(itemId, rivitLista)
-  local nimi = GetItemInfo(itemId) or ("item " .. itemId)
-
-  local osat = {}
-  for _, r in ipairs(rivitLista) do
-    osat[#osat + 1] = ("%s %d"):format(r.nimi, r.luku)
-  end
-
-  NS.Tulosta(("%s — %s"):format(nimi, table.concat(osat, ", ")))
-end

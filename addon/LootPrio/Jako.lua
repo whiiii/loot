@@ -1,13 +1,13 @@
 --[[
   LootPrio — jakosessio.
 
-  Lootmaster avaa session, jolloin jokaisen raidilaisen ruudulle aukeaa
-  ikkuna jossa itemiin vastataan yhdella napilla. Vastaukset palaavat
-  lootmasterille, joka nakee kaikki yhdessa listassa ja jakaa sen
-  perusteella.
+  Sessio on sama kaikilla: lootmaster avaa sen, ja jokaisen raidilaisen
+  addon rakentaa siita saman nakyman. Vastaukset lahetetaan raidille,
+  joten jokainen nakee mita muut vastasivat.
 
-  Nain myos item jota kukaan ei ole varannut saadaan jaettua: profiili on
-  yksi vastausvaihtoehto neljasta, ei ainoa peruste.
+  Avoimuus on tarkoituksellista. Kun kaikki nakevat samat perusteet ja
+  samat numerot, lootmasterin paatosta voi seurata - eika kenenkaan
+  tarvitse uskoa sanaan.
 ]]
 
 local ADDON, NS = ...
@@ -24,26 +24,49 @@ NS.VASTAUKSET = {
 NS.VASTAUS = {}
 for _, v in ipairs(NS.VASTAUKSET) do NS.VASTAUS[v.koodi] = v end
 
--- Lootmasterin sessio. Vastaanottajan oma sessio on NS.omaSessio.
+--- Sessio. Sama rakenne kaikilla, vain slot on pelkastaan lootmasterilla
+--- (sita tarvitaan lootin antamiseen, eika sita laheteta muille).
 NS.sessio = nil
-NS.omaSessio = nil
 
 --------------------------------------------------------------------------
--- Lootmaster: session avaus
+-- Session avaus
 --------------------------------------------------------------------------
 
---- Avaa jakosession loottiruudun sisallosta.
+local function uusiSessio(id, lootmaster, nakyvyys)
+  return {
+    id = id,
+    lootmaster = lootmaster,
+    -- "raid" tai "officers". Lootmasterin asetus matkaa session mukana,
+    -- jottei jokainen paata itse mita nakee.
+    nakyvyys = nakyvyys or "raid",
+    alkoi = GetTime(),
+    itemit = {},
+    omaVastaus = {},
+    valittu = 1,
+  }
+end
+
+--- Naytetaanko muiden vastaukset talle pelaajalle.
+---
+--- Tama on nakyvyysasetus, ei salaisuus: tiedot kulkevat raidikanavalla
+--- ja ovat jokaisen koneella joka tapauksessa. Asetus ratkaisee vain
+--- naytetaanko ne - muokattu addon nakisi ne silti.
+function NS.NaytaKaikkiVastaukset()
+  local s = NS.sessio
+  if not s then return true end
+  if s.nakyvyys == "raid" then return true end
+  return NS.OnOfficer()
+end
+
+--- Lootmaster avaa session loottiruudun sisallosta.
 function NS.AvaaSessio(lootit)
   if #lootit == 0 then
     NS.Tulosta("ei jaettavaa loottia.")
     return false
   end
 
-  NS.sessio = {
-    id = tostring(math.random(100000, 999999)),
-    alkoi = GetTime(),
-    itemit = {},
-  }
+  NS.sessio = uusiSessio(tostring(math.random(100000, 999999)),
+    NS.OmaNimi(), NS.db.rollienNakyvyys)
 
   for i, loot in ipairs(lootit) do
     NS.sessio.itemit[i] = {
@@ -55,7 +78,8 @@ function NS.AvaaSessio(lootit)
       laatu = loot.laatu,
       testi = loot.testi,
       jaettu = false,
-      vastaukset = {},   -- [pelaaja] = { koodi, luku, prioOk }
+      saaja = nil,
+      vastaukset = {},
     }
   end
 
@@ -73,7 +97,8 @@ function NS.LahetaSessio()
   local osat, pituus = {}, 0
   local function tyhjenna()
     if #osat > 0 then
-      NS.Comm.Laheta("SESSIO", NS.sessio.id .. " " .. table.concat(osat, ","))
+      NS.Comm.Laheta("SESSIO", ("%s %s %s"):format(
+        NS.sessio.id, NS.sessio.nakyvyys, table.concat(osat, ",")))
       osat, pituus = {}, 0
     end
   end
@@ -87,7 +112,27 @@ function NS.LahetaSessio()
   tyhjenna()
 end
 
---- Paattaa session ja kertoo siita muille.
+--- Lootmaster avasi session: rakennetaan sama nakyma tanne.
+function NS.SaapuvaSessio(sessioId, nakyvyys, itemit, lahettaja)
+  -- Sama sessio voi tulla useassa osassa, jolloin itemit lisataan.
+  if not NS.sessio or NS.sessio.id ~= sessioId then
+    NS.sessio = uusiSessio(sessioId, lahettaja, nakyvyys)
+  end
+
+  for _, rivi in ipairs(itemit) do
+    if not NS.sessio.itemit[rivi.indeksi] then
+      NS.sessio.itemit[rivi.indeksi] = {
+        indeksi = rivi.indeksi,
+        itemId = rivi.itemId,
+        jaettu = false,
+        vastaukset = {},
+      }
+    end
+  end
+
+  NS.Avaa("loot")
+end
+
 function NS.PaataSessio()
   if not NS.sessio then return end
   NS.Comm.Laheta("LOPPU", NS.sessio.id)
@@ -95,25 +140,54 @@ function NS.PaataSessio()
   if NS.PaivitaNakyma then NS.PaivitaNakyma("loot") end
 end
 
+function NS.SessioPaattyi(sessioId)
+  if NS.sessio and NS.sessio.id == sessioId then
+    NS.sessio = nil
+    if NS.PaivitaNakyma then NS.PaivitaNakyma("loot") end
+  end
+end
+
 --------------------------------------------------------------------------
--- Lootmaster: vastausten vastaanotto
+-- Vastaukset
 --------------------------------------------------------------------------
+
+--- Lahettaa oman vastauksen raidille.
+---
+--- Raidikanavalle eika kuiskauksena: jokaisen on tarkoitus nahda mita
+--- muut vastasivat, muuten lista olisi vain lootmasterin tiedossa.
+function NS.Vastaa(indeksi, koodi)
+  local s = NS.sessio
+  if not s then return end
+  if not NS.VASTAUS[koodi] then return end
+
+  local item = s.itemit[indeksi]
+  if not item or item.jaettu then return end
+
+  s.omaVastaus[indeksi] = koodi
+  NS.Comm.Laheta("VASTAUS", ("%s %d %s"):format(s.id, indeksi, koodi))
+
+  -- Oma vastaus kirjataan heti: omaa viestia ei saada takaisin.
+  NS.KirjaaVastaus(s.id, indeksi, NS.OmaNimi(), koodi)
+end
 
 --- Kirjaa yhden pelaajan vastauksen.
 ---
---- Arvonta tehdaan vasta tassa: vain vastanneet osallistuvat, eika
---- numeroita tarvitse arpoa niille joita item ei kiinnosta.
----
---- prioOk kertoo onko item oikeasti kyseisen pelaajan profiilissa.
---- Vastaus tulee pelaajan omalta koneelta, joten siihen ei voi luottaa -
---- mutta lootmasterilla on kaikkien profiilit, joten han voi tarkistaa.
-function NS.KirjaaVastaus(sessioId, indeksi, pelaaja, koodi)
-  if not NS.sessio or NS.sessio.id ~= sessioId then return end
+--- Arvonnan tekee vain lootmaster ja lahettaa tuloksen muille. Jos
+--- jokainen arpoisi itse, numerot eroaisivat koneesta toiseen eika
+--- kukaan voisi tarkistaa mitaan.
+function NS.KirjaaVastaus(sessioId, indeksi, pelaaja, koodi, luku)
+  local s = NS.sessio
+  if not s or s.id ~= sessioId then return end
   if not NS.VASTAUS[koodi] then return end
 
-  local item = NS.sessio.itemit[indeksi]
+  local item = s.itemit[indeksi]
   if not item or item.jaettu then return end
 
+  -- Onko item oikeasti kyseisen pelaajan profiilissa.
+  --
+  -- Vastaus tulee pelaajan omalta koneelta, joten siihen ei voi luottaa.
+  -- Tarkistus tehdaan jokaisella koneella omia tuotuja profiileja vasten,
+  -- joten vaite nakyy vaarana kaikille joilla data on.
   local prioOk = false
   local valinnat = NS.db.profiilit[pelaaja]
   if valinnat then
@@ -124,17 +198,38 @@ function NS.KirjaaVastaus(sessioId, indeksi, pelaaja, koodi)
 
   item.vastaukset[pelaaja] = {
     koodi = koodi,
-    luku = (koodi ~= "pass") and math.random(1, 100) or nil,
+    luku = luku,
     prioOk = prioOk,
   }
+
+  -- Lootmaster arpoo ja kertoo tuloksen, jotta kaikilla on sama numero.
+  if NS.OnLootMaster() and koodi ~= "pass" and not luku then
+    item.vastaukset[pelaaja].luku = math.random(1, 100)
+    NS.Comm.Laheta("ARPA", ("%s %d %s %d"):format(
+      sessioId, indeksi, pelaaja, item.vastaukset[pelaaja].luku))
+  end
+
+  if NS.PaivitaNakyma then NS.PaivitaNakyma("loot") end
+end
+
+--- Lootmasterin lahettama arvonta yhdelle vastaukselle.
+function NS.KirjaaArpa(sessioId, indeksi, pelaaja, luku)
+  local s = NS.sessio
+  if not s or s.id ~= sessioId then return end
+
+  local item = s.itemit[indeksi]
+  if not item then return end
+
+  local v = item.vastaukset[pelaaja]
+  if v then v.luku = luku end
 
   if NS.PaivitaNakyma then NS.PaivitaNakyma("loot") end
 end
 
 --- Yhden itemin vastaukset listana, parhaasta alkaen.
 ---
---- Jarjestys: vastaustyyppi ensin, sitten arvonta. Lootmaster nakee
---- ylimpana sen jolla on vahvin peruste, ei suurin numero.
+--- Jarjestys: vastaustyyppi ensin, sitten arvonta. Ylimpana on se jolla
+--- on vahvin peruste, ei se jolla on suurin numero.
 function NS.ItemienVastaukset(item)
   local lista = {}
 
@@ -144,6 +239,7 @@ function NS.ItemienVastaukset(item)
       koodi = v.koodi,
       luku = v.luku,
       prioOk = v.prioOk,
+      saatu = NS.SaatuMaara(pelaaja),
       jarjestys = NS.VASTAUS[v.koodi].jarjestys,
     }
   end
@@ -158,9 +254,6 @@ function NS.ItemienVastaukset(item)
 end
 
 --- Ketka raidissa eivat ole vastanneet.
----
---- Tama on lootmasterille yhta tarkea tieto kuin vastaukset: odottaako
---- viela vai onko jaljella vain ne joilla ei ole addonia.
 function NS.Vastaamatta(item)
   local puuttuu = {}
   for nimi, online in pairs(NS.RaidinJasenet()) do
@@ -170,47 +263,6 @@ function NS.Vastaamatta(item)
   end
   table.sort(puuttuu)
   return puuttuu
-end
-
---------------------------------------------------------------------------
--- Raideri: session vastaanotto ja vastaaminen
---------------------------------------------------------------------------
-
---- Lootmaster avasi session. Avataan vastausikkuna.
-function NS.SaapuvaSessio(sessioId, itemit, lahettaja)
-  -- Sama sessio voi tulla useassa osassa, jolloin itemit lisataan.
-  if not NS.omaSessio or NS.omaSessio.id ~= sessioId then
-    NS.omaSessio = {
-      id = sessioId,
-      lootmaster = lahettaja,
-      itemit = {},
-      vastattu = {},
-    }
-  end
-
-  for _, rivi in ipairs(itemit) do
-    NS.omaSessio.itemit[rivi.indeksi] = {
-      indeksi = rivi.indeksi,
-      itemId = rivi.itemId,
-    }
-  end
-
-  if NS.AvaaVastausIkkuna then NS.AvaaVastausIkkuna() end
-end
-
---- Lahettaa oman vastauksen lootmasterille.
----
---- Kuiskauksena eika raidikanavalle: vastaus kuuluu vain lootmasterille,
---- eika kahdenkymmenen pelaajan vastauksia kannata lahettaa kaikille.
-function NS.Vastaa(indeksi, koodi)
-  local s = NS.omaSessio
-  if not s then return end
-
-  s.vastattu[indeksi] = koodi
-  NS.Comm.LahetaKuiskaus(s.lootmaster, "VASTAUS",
-    ("%s %d %s"):format(s.id, indeksi, koodi))
-
-  if NS.PaivitaVastausIkkuna then NS.PaivitaVastausIkkuna() end
 end
 
 --- Onko item omassa profiilissa. Ratkaisee onko LootPrio-nappi kaytossa.
@@ -224,9 +276,26 @@ function NS.OmassaProfiilissa(itemId)
   return false
 end
 
-function NS.SessioPaattyi(sessioId)
-  if NS.omaSessio and NS.omaSessio.id == sessioId then
-    NS.omaSessio = nil
-    if NS.SuljeVastausIkkuna then NS.SuljeVastausIkkuna() end
-  end
+--------------------------------------------------------------------------
+-- Jaetuksi merkitseminen
+--------------------------------------------------------------------------
+
+--- Kirjaa jaon kaikilla koneilla.
+---
+--- Lootmaster lahettaa tiedon, jotta jokaisen saatujen itemien laskuri
+--- pysyy ajan tasalla - ei vain sen joka jakoi.
+function NS.KirjaaJako(sessioId, indeksi, saaja)
+  local s = NS.sessio
+  if not s or s.id ~= sessioId then return end
+
+  local item = s.itemit[indeksi]
+  if not item or item.jaettu then return end
+
+  item.jaettu = true
+  item.saaja = saaja
+
+  local v = item.vastaukset[saaja]
+  NS.LisaaHistoriaan(item.itemId, saaja, v and v.luku)
+
+  if NS.PaivitaNakyma then NS.PaivitaNakyma("loot") end
 end

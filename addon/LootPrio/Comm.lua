@@ -28,45 +28,6 @@ function NS.Comm.Laheta(tyyppi, hyotykuorma)
   C_ChatInfo.SendAddonMessage(ETULIITE, tyyppi .. " " .. (hyotykuorma or ""), kohde)
 end
 
---- Kuiskaus yhdelle pelaajalle.
----
---- Vastaukset kulkevat nain: ne kuuluvat vain lootmasterille, eika
---- kahdenkymmenen pelaajan vastauksia kannata lahettaa koko raidille.
-function NS.Comm.LahetaKuiskaus(kohde, tyyppi, hyotykuorma)
-  if not kohde or kohde == "" then return end
-  if not C_ChatInfo or not C_ChatInfo.SendAddonMessage then return end
-
-  if kohde == NS.OmaNimi() then
-    -- Peli ei valita kuiskausta itselle, joten se kasitellaan suoraan.
-    NS.Comm.Kasittele(tyyppi, hyotykuorma or "", kohde)
-    return
-  end
-
-  C_ChatInfo.SendAddonMessage(ETULIITE, tyyppi .. " " .. (hyotykuorma or ""),
-    "WHISPER", kohde)
-end
-
---- Lahettaa yhden itemin arvontatulokset koko raidille.
-function NS.Comm.LahetaRollit(itemId, rollit)
-  local osat, pituus = {}, 0
-
-  local function tyhjenna()
-    if #osat > 0 then
-      NS.Comm.Laheta("ROLL", itemId .. " " .. table.concat(osat, ","))
-      osat, pituus = {}, 0
-    end
-  end
-
-  for _, r in ipairs(rollit) do
-    local pala = r.nimi .. ":" .. (r.luku or 0)
-    if pituus + #pala + 1 > 200 then tyhjenna() end
-    osat[#osat + 1] = pala
-    pituus = pituus + #pala + 1
-  end
-
-  tyhjenna()
-end
-
 -- Vastaanotto --------------------------------------------------------------
 
 function NS.Comm.Kasittele(tyyppi, sisalto, lahettaja)
@@ -75,7 +36,8 @@ function NS.Comm.Kasittele(tyyppi, sisalto, lahettaja)
     -- vastausikkunan koko raidille.
     if not NS.OnLootMasterNimi(lahettaja) then return end
 
-    local sessioId, lista = sisalto:match("^(%S+)%s+(.*)$")
+    local sessioId, nakyvyys, lista =
+      sisalto:match("^(%S+)%s+(%S+)%s+(.*)$")
     if not sessioId then return end
 
     local itemit = {}
@@ -86,35 +48,37 @@ function NS.Comm.Kasittele(tyyppi, sisalto, lahettaja)
       }
     end
 
-    NS.SaapuvaSessio(sessioId, itemit, lahettaja)
+    NS.SaapuvaSessio(sessioId, nakyvyys, itemit, lahettaja)
 
   elseif tyyppi == "VASTAUS" then
-    -- Vastaukset kiinnostavat vain lootmasteria.
-    if not NS.OnLootMaster() then return end
-
     local sessioId, indeksi, koodi = sisalto:match("^(%S+)%s+(%d+)%s+(%S+)$")
     if not sessioId then return end
 
+    -- Vastaus kirjataan aina lahettajan nimelle, ei viestin sisallon
+    -- perusteella. Nain kukaan ei voi vastata toisen puolesta.
     NS.KirjaaVastaus(sessioId, tonumber(indeksi), lahettaja, koodi)
+
+  elseif tyyppi == "ARPA" then
+    -- Arvonnan tekee lootmaster, jotta kaikilla on sama numero.
+    if not NS.OnLootMasterNimi(lahettaja) then return end
+
+    local sessioId, indeksi, pelaaja, luku =
+      sisalto:match("^(%S+)%s+(%d+)%s+(%S+)%s+(%d+)$")
+    if not sessioId then return end
+
+    NS.KirjaaArpa(sessioId, tonumber(indeksi), pelaaja, tonumber(luku))
+
+  elseif tyyppi == "JAETTU" then
+    if not NS.OnLootMasterNimi(lahettaja) then return end
+
+    local sessioId, indeksi, saaja = sisalto:match("^(%S+)%s+(%d+)%s+(%S+)$")
+    if not sessioId then return end
+
+    NS.KirjaaJako(sessioId, tonumber(indeksi), saaja)
 
   elseif tyyppi == "LOPPU" then
     if not NS.OnLootMasterNimi(lahettaja) then return end
     NS.SessioPaattyi(sisalto:match("^(%S+)"))
-
-  elseif tyyppi == "ROLL" then
-    if not NS.OnLootMasterNimi(lahettaja) then return end
-
-    local itemId, lista = sisalto:match("^(%d+)%s+(.*)$")
-    if not itemId then return end
-
-    local rivit = {}
-    for hahmo, luku in lista:gmatch("([^,:]+):(%d+)") do
-      rivit[#rivit + 1] = { nimi = hahmo, luku = tonumber(luku) }
-    end
-
-    if NS.NaytaSaadutRollit then
-      NS.NaytaSaadutRollit(tonumber(itemId), rivit)
-    end
   end
 end
 
@@ -131,8 +95,7 @@ kehys:SetScript("OnEvent", function(_, _, etuliite, viesti, _, lahettaja)
   local tyyppi, sisalto = viesti:match("^(%S+)%s*(.-)$")
   if not tyyppi then return end
 
-  -- Omat viestit ohitetaan paitsi kuiskaus itselle, joka kasitellaan jo
-  -- lahetyksessa.
+  -- Omat viestit ohitetaan: ne on jo kasitelty lahetyksen yhteydessa.
   if nimi == NS.OmaNimi() then return end
 
   NS.Comm.Kasittele(tyyppi, sisalto, nimi)

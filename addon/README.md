@@ -30,16 +30,21 @@ oikotie, eivät ainoa tie.
 -teksti ja paina Tuo. Tuonti korvaa aiemmat profiilit kokonaan.
 
 **Raidissa.** Kun loottiruutu aukeaa, lootmaster avaa jaon ja jokaisen
-raidilaisen ruudulle tulee vastausikkuna: **LootPrio, Main spec, Off spec,
-Muu** tai **Pass**. Vastaukset kertyvät lootmasterin listaan vahvimmasta
-perusteesta alkaen, ja rivin Assign-nappi antaa lootin.
+raidilaisen ikkuna aukeaa samaan näkymään. Itemit ovat välilehtinä, ja
+jokaisen kohdalla vastataan yhdellä napilla: **LootPrio, Main spec, Off
+spec, Muu** tai **Pass**.
+
+Vastaukset lähetetään raidille, joten **jokainen näkee mitä muut
+vastasivat** — vastaus, arvonta, pelaaja ja montako loottia hän on jo
+saanut. Lista on järjestetty vahvimmasta perusteesta alkaen, ja
+lootmasterilla on jokaisella rivillä Assign-nappi.
 
 Kaikki itemit menevät jakoon, eivät vain profiileissa olevat — profiili on
 yksi peruste neljästä, ei pääsyvaatimus.
 
 **LootPrio-nappi on käytössä vain jos item on oikeasti omassa
-profiilissa.** Lootmaster näkee lisäksi merkinnän, jos joku väittää priota
-ilman että se näkyy tuoduissa profiileissa.
+profiilissa.** Jos joku silti väittää priota, rivi merkitään punaisella
+huutomerkillä kaikille joilla profiilit on tuotuna.
 
 **Historia.** Jaetut itemit kirjautuvat Historia-välilehdelle. Luo vienti
 ja liitä teksti sivuston ylläpitoon, niin saadut itemit saavat profiiliin
@@ -65,13 +70,14 @@ kosketa.
 ulospäin, joten profiilit on tuotava liittämällä ja historia vietävä
 samalla tavalla takaisin.
 
-**Pakottaa muita vastaamaan.** Vastausikkuna aukeaa vain niille joilla on
-addon. Lootmaster näkee listassa myös ketkä eivät ole vastanneet, joten
-puuttuva vastaus erottuu hiljaisuudesta.
+**Pakottaa muita vastaamaan.** Ikkuna aukeaa vain niille joilla on addon.
+Lista näyttää myös ketkä eivät ole vastanneet, joten puuttuva vastaus
+erottuu hiljaisuudesta.
 
 **Luottaa vastaukseen sokeasti.** Vastaus tulee pelaajan omalta koneelta.
-Siksi lootmasterin addon tarkistaa prio-väitteen omia profiilitietojaan
-vasten ja merkitsee sen jos se ei täsmää.
+Siksi prio-väite tarkistetaan jokaisella koneella tuotuja profiileja
+vasten ja merkitään jos se ei täsmää.
 
-**Rajata viestiä osalle raidia.** Raidikanava menee kaikille. Siksi
-"vain officerit" tarkoittaa, ettei arvontoja lähetetä lainkaan.
+**Pitää vastauksia salassa.** Raidikanava menee kaikille, joten tiedot
+ovat jokaisen koneella riippumatta asetuksesta. "Vain officerit" on
+näkyvyysvalinta, ei salaisuus - muokattu addon näkisi ne silti.

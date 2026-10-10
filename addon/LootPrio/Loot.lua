@@ -64,10 +64,8 @@ function NS.Jaa(item, nimi)
   local koodi = vastaus and vastaus.koodi
 
   if item.testi then
-    item.jaettu = true
-    NS.LisaaHistoriaan(item.itemId, nimi, luku)
+    NS.KirjaaJako(NS.sessio.id, item.indeksi, nimi)
     NS.Tulosta(("TESTI: %s -> %s"):format(item.nimi or item.itemId, nimi))
-    if NS.PaivitaNakyma then NS.PaivitaNakyma("loot") end
     return true
   end
 
@@ -83,11 +81,11 @@ function NS.Jaa(item, nimi)
   end
 
   GiveMasterLoot(item.slot, indeksi)
-  item.jaettu = true
 
-  -- Historia kirjataan vasta kun jako on tehty, jottei siihen paady
-  -- itemeita joita kukaan ei saanut.
-  NS.LisaaHistoriaan(item.itemId, nimi, luku)
+  -- Jako kirjataan kaikilla koneilla, jotta saatujen laskuri pysyy ajan
+  -- tasalla muillakin kuin jakajalla.
+  NS.KirjaaJako(NS.sessio.id, item.indeksi, nimi)
+  NS.Comm.Laheta("JAETTU", ("%s %d %s"):format(NS.sessio.id, item.indeksi, nimi))
 
   if NS.db.ilmoitaVoittaja then
     local peruste = koodi and NS.VASTAUS[koodi] and NS.VASTAUS[koodi].nimi
@@ -100,7 +98,6 @@ function NS.Jaa(item, nimi)
     SendChatMessage("LootPrio: " .. viesti, IsInRaid() and "RAID" or "PARTY")
   end
 
-  if NS.PaivitaNakyma then NS.PaivitaNakyma("loot") end
   return true
 end
 
