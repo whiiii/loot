@@ -4,7 +4,24 @@
 import { haeAktiiviRaidi, PAIKAT } from "./valinnat.js";
 import { hashPassword } from "./auth.js";
 import { haeItemTiedot } from "./itemit.js";
-import { onLuokka, onRaidirooli } from "./hahmo.js";
+import {
+  LUOKAN_ROOLIT,
+  LUOKAT,
+  RAIDIROOLIT,
+  onLuokka,
+  onRaidirooli,
+  rooliSopii,
+} from "./hahmo.js";
+
+/** Selkokielinen virheilmoitus kelpaamattomasta luokka-rooli-parista. */
+function rooliVirhe(luokka, rooli) {
+  const luokanNimi = LUOKAT[luokka] ? LUOKAT[luokka].nimi : luokka;
+  const sallitut = (LUOKAN_ROOLIT[luokka] || [])
+    .map((r) => RAIDIROOLIT[r])
+    .join(", ");
+
+  return `${luokanNimi} ei voi olla ${RAIDIROOLIT[rooli] || rooli}. Sallitut: ${sallitut}.`;
+}
 
 /** Kayttajat ja se montako valintaa kullakin on aktiivisessa raidissa. */
 export async function haeKayttajat(env) {
@@ -119,6 +136,9 @@ export async function luoKayttaja(env, actor, tiedot) {
 
   if (!onLuokka(luokka)) return { error: "Tuntematon luokka.", status: 400 };
   if (!onRaidirooli(raidirooli)) return { error: "Tuntematon rooli.", status: 400 };
+  if (!rooliSopii(luokka, raidirooli)) {
+    return { error: rooliVirhe(luokka, raidirooli), status: 400 };
+  }
 
   if (!TUNNUS_SAANTO.test(tunnus)) {
     return {
@@ -254,7 +274,7 @@ export async function asetaSalasana(env, actor, username, salasana) {
  */
 export async function paivitaHahmo(env, actor, username, muutokset) {
   const kohde = await env.DB.prepare(
-    "SELECT id, username FROM users WHERE username = ?"
+    "SELECT id, username, class, raid_role FROM users WHERE username = ?"
   )
     .bind(username)
     .first();
@@ -289,12 +309,49 @@ export async function paivitaHahmo(env, actor, username, muutokset) {
 
   if (kentat.length === 0) return { ok: true, username: kohde.username };
 
+  // Luokan ja roolin on sovittava yhteen myos muutoksen jalkeen.
+  //
+  // Kaksi eri tilannetta. Jos roolia ollaan asettamassa, kelpaamaton valinta
+  // torjutaan - kayttaja yritti jotain mika ei kay. Jos taas luokkaa
+  // vaihdetaan ja vanha rooli jaa sen myota kelvottomaksi, rooli
+  // tyhjennetaan: officer vaihtoi luokan, ei roolia, eika muutoksen kuulu
+  // kaatua siihen.
+  const uusiLuokka = Object.hasOwn(muutokset, "class")
+    ? String(muutokset.class ?? "").trim()
+    : kohde.class;
+  const uusiRooli = Object.hasOwn(muutokset, "raid_role")
+    ? String(muutokset.raid_role ?? "").trim()
+    : kohde.raid_role;
+
+  let roolinTyhjennys = null;
+
+  if (!rooliSopii(uusiLuokka, uusiRooli)) {
+    if (Object.hasOwn(muutokset, "raid_role")) {
+      return { error: rooliVirhe(uusiLuokka, uusiRooli), status: 400 };
+    }
+
+    roolinTyhjennys = uusiRooli;
+    if (!kentat.includes("raid_role = ?")) {
+      kentat.push("raid_role = ?");
+      arvot.push(null);
+    }
+  }
+
   await env.DB.prepare(`UPDATE users SET ${kentat.join(", ")} WHERE id = ?`)
     .bind(...arvot, kohde.id)
     .run();
 
   await kirjaa(env, actor, "PAIVITA_HAHMO", kohde.username, kentat.join(", "));
-  return { ok: true, username: kohde.username };
+
+  return {
+    ok: true,
+    username: kohde.username,
+    // Kerrotaan selaimelle jos rooli tyhjennettiin, jottei muutos jaa
+    // kayttajalta huomaamatta.
+    roolinTyhjennys: roolinTyhjennys
+      ? rooliVirhe(uusiLuokka, roolinTyhjennys)
+      : null,
+  };
 }
 
 /** Hakee kayttajan nimella nakymaa varten. */

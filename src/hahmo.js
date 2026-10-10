@@ -22,6 +22,39 @@ export const RAIDIROOLIT = {
   dps:    "DPS",
 };
 
+/**
+ * Mihin rooleihin kukin luokka kelpaa.
+ *
+ * Tankkeja ovat vain Warrior, Paladin ja Druid. Parantajia Paladin,
+ * Priest, Shaman ja Druid. Kaikki voivat olla DPS.
+ *
+ * Tarkistus on palvelimella eika vain valitsimessa: selaimen rajaus on
+ * kayttoliittymaa, ei saanto, ja sen ohittaa avaamalla konsolin.
+ */
+export const LUOKAN_ROOLIT = {
+  warrior: ["tank", "dps"],
+  paladin: ["tank", "healer", "dps"],
+  hunter:  ["dps"],
+  rogue:   ["dps"],
+  priest:  ["healer", "dps"],
+  shaman:  ["healer", "dps"],
+  mage:    ["dps"],
+  warlock: ["dps"],
+  druid:   ["tank", "healer", "dps"],
+};
+
+/**
+ * Kelpaako rooli luokalle.
+ *
+ * Tyhja rooli kelpaa aina, ja ilman luokkaa ei voi paatella mitaan - ne
+ * eivat ole virheita vaan keskenerainen profiili.
+ */
+export function rooliSopii(luokka, rooli) {
+  if (!rooli || !luokka) return true;
+  const sallitut = LUOKAN_ROOLIT[luokka];
+  return !sallitut || sallitut.includes(rooli);
+}
+
 export function onLuokka(arvo) {
   return arvo === null || arvo === "" || Object.hasOwn(LUOKAT, arvo);
 }

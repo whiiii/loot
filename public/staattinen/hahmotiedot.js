@@ -19,6 +19,33 @@ window.LUOKAT = {
 
 window.RAIDIROOLIT = { tank: "Tank", healer: "Healer", dps: "DPS" };
 
+/**
+ * Mihin rooleihin kukin luokka kelpaa.
+ *
+ * Sama taulukko on palvelimella src/hahmo.js:ssa, joka on se joka
+ * ratkaisee. Tama on kayttoliittymaa varten: kelvotonta vaihtoehtoa ei
+ * kannata tarjota, vaikka sen torjuminen hoidetaankin muualla.
+ */
+window.LUOKAN_ROOLIT = {
+  warrior: ["tank", "dps"],
+  paladin: ["tank", "healer", "dps"],
+  hunter:  ["dps"],
+  rogue:   ["dps"],
+  priest:  ["healer", "dps"],
+  shaman:  ["healer", "dps"],
+  mage:    ["dps"],
+  warlock: ["dps"],
+  druid:   ["tank", "healer", "dps"],
+};
+
+/** Luokalle kelpaavat roolit avain-nimi-pareina. Ilman luokkaa kaikki. */
+window.roolitLuokalle = function (luokka) {
+  const sallitut = window.LUOKAN_ROOLIT[luokka];
+  return Object.entries(window.RAIDIROOLIT).filter(
+    ([avain]) => !sallitut || sallitut.includes(avain)
+  );
+};
+
 window.RANGIT = { social: "Social", raider: "Raider", officer: "Officer" };
 
 /** Hahmon nakyva nimi: etu- ja sukunimi, tai tunnus jos niita ei ole. */

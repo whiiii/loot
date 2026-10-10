@@ -154,7 +154,11 @@ function piirra(users) {
     tr.appendChild(hahmo);
 
     tr.appendChild(kenttaSolu(u, "class", LUOKKAPARIT, "— luokka —"));
-    tr.appendChild(kenttaSolu(u, "raid_role", ROOLIPARIT, "— rooli —"));
+
+    // Roolivalitsin tarjoaa vain ne roolit joihin luokka kelpaa.
+    tr.appendChild(
+      kenttaSolu(u, "raid_role", roolitLuokalle(u.class), "— rooli —")
+    );
 
     const rooli = document.createElement("td");
     rooli.appendChild(roolivalitsin(u));
@@ -300,7 +304,10 @@ function kenttaSolu(u, kentta, parit, tyhjaTeksti) {
         sel.value = vanha;
         return;
       }
-      naytaViesti(`${u.username} päivitetty.`);
+
+      // Luokan vaihto voi tyhjentaa roolin. Siita kerrotaan, jottei muutos
+      // jaa huomaamatta kun lista piirtyy uudelleen.
+      naytaViesti(d.roolinTyhjennys || `${u.username} päivitetty.`);
       lataa();
     } catch (err) {
       naytaViesti("Virhe: " + (err && err.message ? err.message : String(err)));
@@ -562,8 +569,22 @@ $("ulos").addEventListener("click", async () => {
 // jottei listoja ole kahta eri paikassa.
 taytaValitsin($("u-luokka"), LUOKKAPARIT, "", "— luokka —", luokanVari);
 taytaValitsin($("u-raidirooli"), ROOLIPARIT, "", "— rooli —");
+
+// Luokan vaihto rajaa roolivalikon. Valittu rooli sailyy jos se yha kelpaa.
 $("u-luokka").addEventListener("change", () => {
-  $("u-luokka").style.color = luokanVari($("u-luokka").value);
+  const luokka = $("u-luokka").value;
+  $("u-luokka").style.color = luokanVari(luokka);
+
+  const sallitut = roolitLuokalle(luokka);
+  const nykyinen = $("u-raidirooli").value;
+  const yhaKelpaa = sallitut.some(([avain]) => avain === nykyinen);
+
+  taytaValitsin(
+    $("u-raidirooli"),
+    sallitut,
+    yhaKelpaa ? nykyinen : "",
+    "— rooli —"
+  );
 });
 
 lataa();
