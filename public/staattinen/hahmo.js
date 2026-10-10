@@ -336,7 +336,8 @@ $("tallenna").addEventListener("click", async () => {
       otsikko: "Tämän jälkeen et pääse muokkaamaan",
       teksti:
         "Profiili lukitaan. Et pysty itse avaamaan sitä etkä muuttamaan " +
-        "valintojasi.\n\nMuutoksiin on otettava yhteyttä killan officeriin.",
+        "valintojasi.\n\nMikäli ei kerrasta osunut, niin oleppa jonnekki " +
+        "yhteyksissä, sanat tiijätte",
       vahvista: "Ymmärrän, lukitse",
       peruuta: "En vielä",
       varoitus: true,
