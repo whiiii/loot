@@ -17,9 +17,36 @@ yhtä ylimääräistä kansiotasoa.
 
 Käynnistä peli uudelleen tai kirjoita `/reload`.
 
-Jos addon ei näy listassa, laita hahmovalinnassa **AddOns → Load out of
-date AddOns** päälle. `.toc`-tiedoston `## Interface` -numero on arvaus, ja
-se kannattaa päivittää vastaamaan omaa asiakasversiota.
+## Jos addon lukee punaisella "Incompatible"
+
+Silloin `.toc`-tiedoston `## Interface` -numero ei vastaa clientiä, eikä
+addon lataudu lainkaan — ei `/lp`-komentoa eikä minimap-nappia. Kyse ei ole
+koodivirheestä.
+
+Numero **ei ole** pelin versionumero vaan siitä johdettu kokonaisluku
+kaavalla `major × 10000 + minor × 100 + patch`. Esimerkiksi versio 1.60.1
+on `11601` ja 1.15.7 on `11507`.
+
+Oikean numeron saa pelistä. Nämä ovat pelin omia komentoja eivätkä vaadi
+yhtäkään ladattua addonia:
+
+```
+/run print((select(4, GetBuildInfo())))
+```
+
+Vaihda saamasi luku `LootPrio.toc`-tiedoston ensimmäiselle riville ja tee
+`/reload`. Kun addon kerran latautuu, se huomauttaa itse jos numero on
+väärin, eikä arvailua enää tarvita.
+
+Laita samalla Lua-virheet näkyviin, jotta hiljainen kaatuminen ei jää
+huomaamatta:
+
+```
+/console scriptErrors 1
+```
+
+**AddOns → Load out of date AddOns** vaikuttaa vasta kun painaa *Okay* ja
+käyttöliittymä latautuu uudelleen, eikä se ohita kuin pienen versioeron.
 
 ## Käyttö
 

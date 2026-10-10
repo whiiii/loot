@@ -1,4 +1,4 @@
-## Interface: 11507
+## Interface: 11601
 ## Title: LootPrio
 ## Notes: Raidin loottiprioriteetit killan sivustolta.
 ## Author: Kilta

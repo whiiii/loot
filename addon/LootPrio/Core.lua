@@ -83,6 +83,21 @@ function NS.Tulosta(...)
   print(NS.VARI .. "LootPrio" .. NS.LOPPU .. ":", ...)
 end
 
+--- Oman .toc-tiedoston ilmoittama Interface-numero.
+---
+--- Rajapinta siirtyi C_AddOns-nimiavaruuteen kesken Classicin elinkaaren.
+--- Molemmat tuetaan, koska juuri taman addonin ongelma on se ettei
+--- clientin versiosta ole varmuutta.
+function NS.TocInterface()
+  if C_AddOns and C_AddOns.GetAddOnMetadata then
+    return C_AddOns.GetAddOnMetadata(ADDON, "Interface")
+  end
+  if GetAddOnMetadata then
+    return GetAddOnMetadata(ADDON, "Interface")
+  end
+  return nil
+end
+
 --- Pelaajan nimi profiilien muodossa.
 ---
 --- Muunnos tehdaan tassa eika kutsupaikoissa: jos oma nimi olisi valilla
@@ -186,7 +201,20 @@ kehys:SetScript("OnEvent", function(_, tapahtuma, nimi)
   local kpl = 0
   for _ in pairs(NS.db.profiilit) do kpl = kpl + 1 end
 
-  NS.Tulosta(("ladattu. Profiileja %d. Avaa ikkuna minimapin napista tai /lp"):format(kpl))
+  NS.Tulosta(("v%s ladattu. Profiileja %d. Avaa ikkuna minimapin napista tai /lp"):format(
+    NS.VERSIO, kpl))
+
+  -- Clientin Interface-numero nakyviin heti. Vaara numero .toc-tiedostossa
+  -- nakyy vain merkintana "Incompatible" addonilistassa, eika mikaan kerro
+  -- mika oikea numero olisi - paitsi tama rivi, kun addon kerran latautuu.
+  local tocNumero = NS.TocInterface()
+  local clientNumero = select(4, GetBuildInfo())
+
+  if tocNumero and clientNumero and tostring(tocNumero) ~= tostring(clientNumero) then
+    NS.Tulosta(("HUOM: .toc sanoo %s, client on %s. Korjaa .toc-tiedoston "
+      .. "ensimmainen rivi muotoon '## Interface: %s'."):format(
+      tocNumero, clientNumero, clientNumero))
+  end
 
   if NS.LuoMinimapNappi then NS.LuoMinimapNappi() end
 end)
