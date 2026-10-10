@@ -1,0 +1,73 @@
+/* Ylläpitosivu. */
+
+.yllapito {
+  max-width: 900px;
+  margin: 1.5rem auto 3rem;
+  padding: 0 1rem;
+}
+
+.yllapito section { margin-bottom: 2.25rem; }
+
+.yllapito h2 {
+  margin: 0 0 .75rem;
+  font-size: 1rem;
+  font-weight: 650;
+  color: var(--korostus);
+}
+
+.pieni-teksti { font-size: .84rem; margin: 0 0 .75rem; }
+
+.lista {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .86rem;
+}
+
+.lista th {
+  text-align: left;
+  padding: .45rem .6rem;
+  border-bottom: 1px solid var(--reuna);
+  color: var(--himmea);
+  font-size: .76rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+
+.lista td {
+  padding: .5rem .6rem;
+  border-bottom: 1px solid rgba(255,255,255,.04);
+  white-space: nowrap;
+}
+
+.lista .oikealle { text-align: right; }
+
+.merkki {
+  display: inline-block;
+  padding: .1rem .5rem;
+  border-radius: 10px;
+  font-size: .74rem;
+  font-weight: 650;
+  border: 1px solid;
+}
+.merkki.auki   { color: #9ad17a; border-color: #4a6b3a; background: #18200f; }
+.merkki.lukko  { color: #e3cd8d; border-color: #6b5a2a; background: #221b0d; }
+.merkki.rooli  { color: var(--himmea); border-color: var(--reuna); background: transparent; }
+
+.napit { display: flex; gap: .5rem; flex-wrap: wrap; }
+
+textarea {
+  width: 100%;
+  margin-top: .75rem;
+  padding: .7rem;
+  background: #0d0b07;
+  border: 1px solid var(--reuna);
+  border-radius: 8px;
+  color: var(--teksti);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: .8rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+textarea[hidden] { display: none; }

@@ -27,6 +27,18 @@ button.pieni {
 button.pieni:hover { background: #241e16; filter: none; }
 button.leveä { width: 100%; margin-top: .75rem; }
 
+a.linkkinappi {
+  display: inline-block;
+  padding: .35rem .8rem;
+  border: 1px solid var(--reuna);
+  border-radius: 7px;
+  color: var(--teksti);
+  text-decoration: none;
+  font-size: .82rem;
+}
+a.linkkinappi:hover { background: #241e16; }
+a.linkkinappi[hidden] { display: none; }
+
 .ilmoitus {
   margin: 1rem auto 0;
   max-width: 900px;
@@ -128,11 +140,23 @@ button.leveä { width: 100%; margin-top: .75rem; }
 }
 .item-ikoni img { width: 100%; height: 100%; display: block; }
 
+.item-teksti { min-width: 0; display: block; }
+
 .item-nimi {
+  display: block;
   font-size: .82rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Item-id pienella ja himmeana. Se on tekninen tunniste, ei nimi -
+   nakyvilla siksi etta addon ja tietokanta puhuvat juuri siita. */
+.item-id {
+  display: block;
+  font-size: .66rem;
+  color: #6b6153;
+  letter-spacing: .02em;
 }
 
 /* Pelin laatuvarit. */

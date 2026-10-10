@@ -31,8 +31,14 @@ async function lataa() {
 
     $("nimi").textContent = mina.user.username;
     $("rooli").textContent = ROOLIT[mina.user.role] || mina.user.role;
-    tila.lukittu = !!mina.user.locked;
+    tila.rooli = mina.user.role;
+
+    // Lukko ei rajoita officeria, joten hanelle se ei ole "lukittu" tila
+    // vaan pelkka merkinta.
+    tila.lukittu = !!mina.user.locked && mina.user.role !== "officer";
     $("lukkoilmoitus").hidden = !tila.lukittu;
+    $("yllapitolinkki").hidden = mina.user.role !== "officer";
+    $("tallenna").hidden = tila.lukittu;
 
     if (!nakyma.ok) {
       naytaViesti(nakyma.error || "Tietojen haku epäonnistui.");
@@ -78,12 +84,24 @@ function itemElementti(itemId) {
     ikoni.appendChild(img);
   }
 
+  const teksti = document.createElement("span");
+  teksti.className = "item-teksti";
+
   const nimi = document.createElement("span");
   nimi.className = "item-nimi q" + (d && d.quality != null ? d.quality : 1);
   nimi.textContent = d && d.name ? d.name : "item " + itemId;
 
+  // Item-id nakyviin pienella. Se on se mita addon ja tietokanta kayttavat,
+  // joten sen nakeminen helpottaa vertailua ja virheiden etsimista.
+  const id = document.createElement("span");
+  id.className = "item-id";
+  id.textContent = itemId;
+
+  teksti.appendChild(nimi);
+  teksti.appendChild(id);
+
   kaari.appendChild(ikoni);
-  kaari.appendChild(nimi);
+  kaari.appendChild(teksti);
   return kaari;
 }
 
@@ -290,6 +308,39 @@ $("peite").addEventListener("click", (e) => {
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") suljeValitsin();
+});
+
+/**
+ * Tallenna lukitsee profiilin.
+ *
+ * Valinnat tallentuvat jo klikatessa, joten tama nappi ei tallenna mitaan
+ * uutta - se merkitsee profiilin valmiiksi. Siksi se myos kysyy varmistuksen:
+ * raider ei paase enaa muuttamaan valintojaan itse.
+ */
+$("tallenna").addEventListener("click", async () => {
+  const teksti =
+    tila.rooli === "officer"
+      ? "Merkitäänkö profiili valmiiksi?"
+      : "Tallennetaanko profiili lopullisesti?\n\n" +
+        "Et pysty enää muuttamaan valintojasi itse. Muutoksiin tarvitset officerin.";
+
+  if (!confirm(teksti)) return;
+
+  try {
+    const data = await fetch("/api/lukitse", { method: "POST" }).then((r) => r.json());
+    if (!data.ok) {
+      naytaViesti(data.error || "Tallennus ei onnistunut.");
+      return;
+    }
+    naytaViesti("Profiili tallennettu.");
+    if (tila.rooli !== "officer") {
+      tila.lukittu = true;
+      $("lukkoilmoitus").hidden = false;
+      $("tallenna").hidden = true;
+    }
+  } catch (err) {
+    naytaViesti("Virhe: " + (err && err.message ? err.message : String(err)));
+  }
 });
 
 $("ulos").addEventListener("click", async () => {

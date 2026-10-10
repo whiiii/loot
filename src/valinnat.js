@@ -90,7 +90,9 @@ export async function haeNakyma(env, kayttajaId) {
  * selaimen rajaus on kayttoliittymaa, ei saanto.
  */
 export async function tallennaValinta(env, kayttaja, slotKey, itemId) {
-  if (kayttaja.locked) {
+  // Lukko koskee raideria, ei officeria. Officerin on paastava korjaamaan
+  // virheita ilman etta han ensin avaa lukon ja unohtaa sulkea sen.
+  if (kayttaja.locked && kayttaja.role !== "officer") {
     return { error: "Profiilisi on lukittu. Pyydä officeria avaamaan se.", status: 403 };
   }
 

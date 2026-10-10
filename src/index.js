@@ -13,12 +13,19 @@ import {
   haeKayttaja,
   hashPassword,
   lueEvasteet,
+  onOfficer,
   poistaEvaste,
   uusiTunnus,
   verifyPassword,
 } from "./auth.js";
 import { haeNakyma, tallennaValinta } from "./valinnat.js";
 import { haeItemTiedot } from "./itemit.js";
+import {
+  asetaLukko,
+  haeKayttajat,
+  lukitseOma,
+  teeVienti,
+} from "./yllapito.js";
 
 export default {
   async fetch(request, env) {
@@ -70,6 +77,18 @@ async function sivu(request, env, polku) {
       return Response.redirect(new URL("/kirjaudu", request.url).toString(), 302);
     }
     return tiedosto(request, env, "/profiili.html");
+  }
+
+  if (polku === "/yllapito") {
+    if (!kayttaja) {
+      return Response.redirect(new URL("/kirjaudu", request.url).toString(), 302);
+    }
+    // Sivun saa auki vain officer. Rajapinta tarkistaa saman erikseen,
+    // joten sivun piilottaminen on mukavuutta eika suojaus.
+    if (kayttaja.role !== "officer") {
+      return Response.redirect(new URL("/profiili", request.url).toString(), 302);
+    }
+    return tiedosto(request, env, "/yllapito.html");
   }
 
   return tiedosto(request, env, polku);
@@ -136,6 +155,36 @@ async function rajapinta(request, env, polku) {
     }
 
     const tulos = await tallennaValinta(env, kayttaja, slotKey, itemId);
+    return json(tulos, tulos.error ? tulos.status : 200);
+  }
+
+  if (polku === "/api/lukitse" && request.method === "POST") {
+    return json(await lukitseOma(env, kayttaja));
+  }
+
+  /* ---------- officerin työkalut ---------- */
+
+  if (!onOfficer(kayttaja)) {
+    return json({ error: "Vain officerille." }, 403);
+  }
+
+  if (polku === "/api/kayttajat") {
+    return json({ ok: true, ...(await haeKayttajat(env)) });
+  }
+
+  if (polku === "/api/lukko" && request.method === "POST") {
+    const body = await lueJson(request);
+    const tulos = await asetaLukko(
+      env,
+      kayttaja.username,
+      String(body.username ?? ""),
+      !!body.locked
+    );
+    return json(tulos, tulos.error ? tulos.status : 200);
+  }
+
+  if (polku === "/api/vienti") {
+    const tulos = await teeVienti(env);
     return json(tulos, tulos.error ? tulos.status : 200);
   }
 
