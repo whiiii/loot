@@ -17,6 +17,7 @@ import {
   uusiTunnus,
   verifyPassword,
 } from "./auth.js";
+import { haeNakyma, tallennaValinta } from "./valinnat.js";
 
 export default {
   async fetch(request, env) {
@@ -100,6 +101,31 @@ async function rajapinta(request, env, polku) {
   }
   if (polku === "/api/mina") {
     return mina(request, env);
+  }
+
+  // Tästä eteenpäin on oltava kirjautunut.
+  const kayttaja = await haeKayttaja(env, request);
+  if (!kayttaja) return json({ error: "Ei kirjautunut." }, 401);
+
+  if (polku === "/api/nakyma") {
+    return json({ ok: true, ...(await haeNakyma(env, kayttaja.id)) });
+  }
+
+  if (polku === "/api/valinta" && request.method === "PUT") {
+    const body = await lueJson(request);
+    const slotKey = String(body.slot_key ?? "");
+    const raaka = body.item_id;
+    const itemId =
+      raaka === null || raaka === "" || raaka === undefined
+        ? null
+        : parseInt(raaka, 10);
+
+    if (itemId !== null && !Number.isFinite(itemId)) {
+      return json({ error: "Virheellinen item." }, 400);
+    }
+
+    const tulos = await tallennaValinta(env, kayttaja, slotKey, itemId);
+    return json(tulos, tulos.error ? tulos.status : 200);
   }
 
   return json({ error: "Tuntematon polku." }, 404);

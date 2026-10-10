@@ -6,44 +6,57 @@
 <meta name="robots" content="noindex, nofollow">
 <title>Profiili — Loot</title>
 <link rel="stylesheet" href="/staattinen/tyyli.css">
+<link rel="stylesheet" href="/staattinen/hahmo.css">
+<script>
+// Wowheadin tooltipit. colorLinks varittaa nimen laadun mukaan,
+// iconizeLinks lisaa ikonin ja renameLinks korvaa linkin tekstin itemin
+// nimella - eli pelkka id riittaa, nimia ei tallenneta kantaan.
+const whTooltips = { colorLinks: true, iconizeLinks: true, renameLinks: true };
+</script>
+<script src="https://wow.zamimg.com/js/tooltips.js"></script>
 </head>
-<body>
-<div class="keskita">
-  <div class="kortti">
-    <h1 id="otsikko">…</h1>
-    <p class="selite" id="rooli"></p>
-    <p class="selite">
-      Hahmoikkuna ja priolista tulevat tähän seuraavaksi.
-    </p>
-    <button id="ulos">Kirjaudu ulos</button>
-    <div class="viesti" id="viesti"></div>
+<body class="sivu">
+
+<header class="palkki">
+  <div>
+    <strong id="nimi">…</strong>
+    <span class="himmea" id="rooli"></span>
+  </div>
+  <div class="palkki-oikea">
+    <span class="himmea" id="raidi"></span>
+    <button class="pieni" id="ulos">Kirjaudu ulos</button>
+  </div>
+</header>
+
+<div id="lukkoilmoitus" class="ilmoitus" hidden>
+  Profiilisi on lukittu. Valintoja ei voi muuttaa — pyydä officeria avaamaan lukko.
+</div>
+
+<main class="hahmo">
+  <div class="sarake vasen" id="vasen"></div>
+  <div class="keski">
+    <div class="keski-tyhja">Hahmo</div>
+  </div>
+  <div class="sarake oikea" id="oikea"></div>
+  <div class="ala" id="ala"></div>
+</main>
+
+<p class="vihje">Klikkaa paikkaa valitaksesi itemin. Hiiri itemin päällä näyttää statsit.</p>
+
+<!-- Itemin valinta -->
+<div class="peite" id="peite" hidden>
+  <div class="valitsin">
+    <div class="valitsin-ylaosa">
+      <strong id="valitsin-otsikko"></strong>
+      <button class="pieni" id="sulje">Sulje</button>
+    </div>
+    <div class="valitsin-lista" id="valitsin-lista"></div>
+    <button class="pieni leveä" id="tyhjenna">Poista valinta</button>
   </div>
 </div>
 
-<script>
-const ROOLIT = {
-  social:  "Social",
-  raider:  "Raider",
-  officer: "Officer"
-};
+<div class="viesti" id="viesti"></div>
 
-fetch("/api/mina")
-  .then(r => r.json())
-  .then(d => {
-    if (!d.ok) { location.href = "/kirjaudu"; return; }
-    document.getElementById("otsikko").textContent = d.user.username;
-    document.getElementById("rooli").textContent =
-      (ROOLIT[d.user.role] || d.user.role) +
-      (d.user.locked ? " · profiili lukittu" : "");
-  })
-  .catch(() => {
-    document.getElementById("viesti").textContent = "Tietojen haku epäonnistui.";
-  });
-
-document.getElementById("ulos").addEventListener("click", async () => {
-  await fetch("/api/ulos", { method: "POST" });
-  location.href = "/";
-});
-</script>
+<script src="/staattinen/hahmo.js"></script>
 </body>
 </html>

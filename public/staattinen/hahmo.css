@@ -1,0 +1,190 @@
+/* Hahmoikkuna: slotit reunoilla, aseet alla - sama asettelu kuin pelissa. */
+
+body.sivu { display: block; }
+
+.palkki {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .85rem 1.25rem;
+  border-bottom: 1px solid var(--reuna);
+  background: var(--paneeli);
+}
+
+.palkki-oikea { display: flex; align-items: center; gap: .85rem; }
+
+.himmea { color: var(--himmea); font-size: .85rem; }
+
+button.pieni {
+  width: auto;
+  padding: .35rem .8rem;
+  font-size: .82rem;
+  background: transparent;
+  border: 1px solid var(--reuna);
+  color: var(--teksti);
+}
+button.pieni:hover { background: #241e16; filter: none; }
+button.leveä { width: 100%; margin-top: .75rem; }
+
+.ilmoitus {
+  margin: 1rem auto 0;
+  max-width: 900px;
+  padding: .7rem 1rem;
+  border: 1px solid #6b5a2a;
+  background: #221b0d;
+  border-radius: 8px;
+  color: #e3cd8d;
+  font-size: .86rem;
+}
+
+/* Hahmoikkuna.
+   Kaksi saraketta reunoilla, keskella tyhja alue ja alla kolme asepaikkaa. */
+.hahmo {
+  max-width: 900px;
+  margin: 1.5rem auto 0;
+  padding: 0 1rem;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    "vasen keski oikea"
+    "ala   ala   ala";
+  gap: 1rem;
+}
+
+.sarake { display: flex; flex-direction: column; gap: .5rem; }
+.vasen  { grid-area: vasen; }
+.oikea  { grid-area: oikea; }
+
+.keski {
+  grid-area: keski;
+  border: 1px solid var(--reuna);
+  border-radius: 10px;
+  background: #100d09;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 340px;
+}
+.keski-tyhja { color: #3a3228; font-size: .9rem; letter-spacing: .25em; }
+
+.ala {
+  grid-area: ala;
+  display: flex;
+  justify-content: center;
+  gap: .5rem;
+  margin-top: .25rem;
+}
+
+/* Yksi paikka. */
+.paikka {
+  width: 170px;
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  padding: .4rem .5rem;
+  background: var(--paneeli);
+  border: 1px solid var(--reuna);
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--teksti);
+  font: inherit;
+}
+.paikka:hover { border-color: var(--korostus); background: #241e16; filter: none; }
+.paikka.valittu { border-color: #6a5a32; }
+
+.paikka .ruutu {
+  width: 34px; height: 34px;
+  flex: 0 0 34px;
+  border: 1px solid var(--reuna);
+  border-radius: 5px;
+  background: #0d0b07;
+  overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+}
+.paikka .ruutu img { width: 100%; height: 100%; display: block; }
+
+.paikka .teksti { min-width: 0; }
+.paikka .otsikko { font-size: .72rem; color: var(--himmea); }
+.paikka .arvo {
+  font-size: .82rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.paikka .arvo.tyhja { color: #5d5447; }
+
+/* Valitsin. */
+.peite {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.72);
+  display: flex; align-items: center; justify-content: center;
+  padding: 1.5rem;
+  z-index: 50;
+}
+.peite[hidden] { display: none; }
+
+.valitsin {
+  width: 100%; max-width: 420px;
+  max-height: 80vh;
+  display: flex; flex-direction: column;
+  background: var(--paneeli);
+  border: 1px solid var(--reuna);
+  border-radius: 12px;
+  padding: 1.1rem;
+}
+
+.valitsin-ylaosa {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: .75rem;
+}
+
+.valitsin-lista { overflow-y: auto; }
+
+.rivi {
+  display: flex; align-items: center; gap: .6rem;
+  width: 100%;
+  padding: .45rem .5rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--teksti);
+  font: inherit;
+}
+.rivi:hover { background: #241e16; border-color: var(--reuna); filter: none; }
+.rivi .boss { margin-left: auto; font-size: .74rem; color: var(--himmea); }
+
+.vihje {
+  max-width: 900px;
+  margin: 1rem auto 2.5rem;
+  padding: 0 1rem;
+  color: var(--himmea);
+  font-size: .82rem;
+}
+
+.viesti {
+  position: fixed; left: 50%; bottom: 1.25rem;
+  transform: translateX(-50%);
+  padding: .5rem .9rem;
+  border-radius: 8px;
+  background: #241e16;
+  border: 1px solid var(--reuna);
+  font-size: .84rem;
+  opacity: 0;
+  transition: opacity .2s;
+  pointer-events: none;
+}
+.viesti.nakyy { opacity: 1; }
+
+@media (max-width: 760px) {
+  .hahmo {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "vasen oikea"
+      "ala   ala";
+  }
+  .keski { display: none; }
+  .paikka { width: 100%; }
+  .ala { flex-wrap: wrap; }
+}
