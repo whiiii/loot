@@ -1,0 +1,14 @@
+## Interface: 11507
+## Title: LootPrio
+## Notes: Raidin loottiprioriteetit killan sivustolta.
+## Author: Kilta
+## Version: 0.1
+## SavedVariables: LootPrioDB
+
+# Lataamisjarjestys on merkitseva: Core maarittelee nimiavaruuden ja
+# asetukset, joita kaikki muut kayttavat.
+Core.lua
+Data.lua
+Comm.lua
+Loot.lua
+UI.lua
