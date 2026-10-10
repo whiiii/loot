@@ -4,12 +4,25 @@
   "main": "src/index.js",
   "compatibility_date": "2026-09-01",
 
-  // Staattiset tiedostot tarjoillaan suoraan Cloudflaren reunalta.
-  // Worker ajetaan vain niille poluille joita public-kansiosta ei loydy,
-  // eli kayttoliittyma ei kulje lainkaan koodin lapi.
+  // Worker ajetaan ennen staattisia tiedostoja.
+  //
+  // Oletuksena Cloudflare tarjoilee public-kansion tiedostot suoraan reunalta
+  // eika Worker nae niita pyyntoja lainkaan. Talla sivustolla se ei kay:
+  // kaikki on yhteisen salasanan takana, eika porttia voi vartioida jos
+  // sivut saa auki sen ohi.
   "assets": {
     "directory": "./public",
-    "binding": "ASSETS"
+    "binding": "ASSETS",
+    "run_worker_first": true,
+
+    // Tiedostot tarjoillaan tasmalleen silla nimella jolla niita pyydetaan.
+    //
+    // Oletuksena Cloudflare ohjaa '/portti.html' osoitteeseen '/portti'. Kun
+    // Worker pyysi tiedostoa nimella, se sai takaisin uudelleenohjauksen,
+    // ohjasi sen omaan reititykseensa ja paatyi silmukkaan. Reitit paatetaan
+    // taalla, joten tiedostopalvelin ei saa keksia omiaan.
+    "html_handling": "none",
+    "not_found_handling": "none"
   },
 
   // D1 on SQLite. database_id taytetaan kun kanta on luotu.

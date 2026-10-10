@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Profiili — Loot</title>
+<link rel="stylesheet" href="/staattinen/tyyli.css">
+</head>
+<body>
+<div class="keskita">
+  <div class="kortti">
+    <h1 id="otsikko">…</h1>
+    <p class="selite" id="rooli"></p>
+    <p class="selite">
+      Hahmoikkuna ja priolista tulevat tähän seuraavaksi.
+    </p>
+    <button id="ulos">Kirjaudu ulos</button>
+    <div class="viesti" id="viesti"></div>
+  </div>
+</div>
+
+<script>
+const ROOLIT = {
+  social:  "Social",
+  raider:  "Raider",
+  officer: "Officer"
+};
+
+fetch("/api/mina")
+  .then(r => r.json())
+  .then(d => {
+    if (!d.ok) { location.href = "/kirjaudu"; return; }
+    document.getElementById("otsikko").textContent = d.user.username;
+    document.getElementById("rooli").textContent =
+      (ROOLIT[d.user.role] || d.user.role) +
+      (d.user.locked ? " · profiili lukittu" : "");
+  })
+  .catch(() => {
+    document.getElementById("viesti").textContent = "Tietojen haku epäonnistui.";
+  });
+
+document.getElementById("ulos").addEventListener("click", async () => {
+  await fetch("/api/ulos", { method: "POST" });
+  location.href = "/";
+});
+</script>
+</body>
+</html>

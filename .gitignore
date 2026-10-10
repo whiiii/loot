@@ -11,3 +11,8 @@ node_modules/
 # Kayttojarjestelman roskat
 Thumbs.db
 .DS_Store
+
+# Ensimmaisten tunnusten siemen. Sisaltaa salasanat selvakielisena,
+# eika kuulu versionhallintaan missaan tapauksessa.
+seed.json
+seed.sql
