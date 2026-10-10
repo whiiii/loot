@@ -7,18 +7,6 @@
 <title>Profiili — Loot</title>
 <link rel="stylesheet" href="/staattinen/tyyli.css">
 <link rel="stylesheet" href="/staattinen/hahmo.css">
-<script>
-// Wowheadin tooltipit. colorLinks varittaa nimen laadun mukaan,
-// iconizeLinks lisaa ikonin ja renameLinks korvaa linkin tekstin itemin
-// nimella - eli pelkka id riittaa, nimia ei tallenneta kantaan.
-//
-// window.whTooltips eika const: Wowheadin skripti lukee asetukset
-// nimenomaan window-objektista. Tavallisella scriptilla 'const' luo
-// script-tason sidonnan joka ei nay windowissa lainkaan, joten asetukset
-// jaivat lukematta ja linkit kasittelematta.
-window.whTooltips = { colorLinks: true, iconizeLinks: true, renameLinks: true };
-</script>
-<script src="https://wow.zamimg.com/js/tooltips.js"></script>
 </head>
 <body class="sivu">
 
@@ -60,6 +48,9 @@ window.whTooltips = { colorLinks: true, iconizeLinks: true, renameLinks: true };
     <button class="pieni leveä" id="tyhjenna">Poista valinta</button>
   </div>
 </div>
+
+<!-- Tooltip. Yksi elementti jota siirretaan hiiren mukana. -->
+<div id="tooltip" class="wh-tooltip" hidden></div>
 
 <div class="viesti" id="viesti"></div>
 

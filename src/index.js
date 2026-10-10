@@ -18,6 +18,7 @@ import {
   verifyPassword,
 } from "./auth.js";
 import { haeNakyma, tallennaValinta } from "./valinnat.js";
+import { haeItemTiedot } from "./itemit.js";
 
 export default {
   async fetch(request, env) {
@@ -108,7 +109,17 @@ async function rajapinta(request, env, polku) {
   if (!kayttaja) return json({ error: "Ei kirjautunut." }, 401);
 
   if (polku === "/api/nakyma") {
-    return json({ ok: true, ...(await haeNakyma(env, kayttaja.id)) });
+    const nakyma = await haeNakyma(env, kayttaja.id);
+
+    // Itemien nimet haetaan samassa vastauksessa. Erillinen kutsu tarkoittaisi
+    // etta lista valahtaa ensin numeroina ja tayttyy vasta sen jalkeen.
+    const idt = [
+      ...nakyma.items.map((i) => i.item_id),
+      ...Object.values(nakyma.picks),
+    ];
+    nakyma.tiedot = await haeItemTiedot(env, idt);
+
+    return json({ ok: true, ...nakyma });
   }
 
   if (polku === "/api/valinta" && request.method === "PUT") {

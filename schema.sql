@@ -146,5 +146,24 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
 
 
-INSERT INTO settings (key, value) VALUES ('schema_version', '2')
+-- Itemien nimet, ikonit ja tooltipit.
+--
+-- Tama on valimuisti, ei totuus. Tiedot haetaan Wowheadilta kerran item-id:ta
+-- kohden ja sailotaan, jottei jokainen sivulataus kuormita ulkopuolista
+-- palvelua - ja jotta sivusto toimii silloinkin kun se on alhaalla.
+--
+-- Aiemmin nama haettiin selaimessa Wowheadin omalla skriptilla. Se on
+-- hauraampi kuin nayttaa: skripti paattaa itse mita linkkeja se kasittelee,
+-- ja jos se ei tunnista osoitemuotoa, mitaan ei tapahdu eika mitaan kerrota.
+CREATE TABLE IF NOT EXISTS item_cache (
+  item_id    INTEGER PRIMARY KEY,
+  name       TEXT,
+  quality    INTEGER,
+  icon       TEXT,
+  tooltip    TEXT,
+  fetched_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+
+INSERT INTO settings (key, value) VALUES ('schema_version', '3')
   ON CONFLICT(key) DO UPDATE SET value = excluded.value;

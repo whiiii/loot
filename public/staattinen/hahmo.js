@@ -1,18 +1,16 @@
 /**
  * Hahmoikkuna: paikkojen piirto ja itemin valinta.
  *
- * Itemien nimet ja ikonit tulevat Wowheadilta linkin id:n perusteella.
- * Sivusto ei tallenna niita, joten patchin jalkeen tiedot ovat oikein
- * ilman etta taalla tehdaan mitaan.
+ * Itemien nimet, ikonit ja tooltipit tulevat omasta rajapinnasta, joka
+ * hakee ne Wowheadilta kerran ja sailoo. Aiemmin tama tehtiin Wowheadin
+ * omalla selainskriptilla, mutta se paatti itse mita linkkeja se kasittelee
+ * eika kertonut mitaan kun se ei tehnyt mitaan.
  */
 
-// Wowheadin osoitteen versio-osa. Forever on Classicin jatko, joten
-// Classic-itemit loytyvat samoilla id:lla.
-const WH = "https://www.wowhead.com/forever";
-
+const IKONI = "https://wow.zamimg.com/images/wow/icons/large/";
 const ROOLIT = { social: "Social", raider: "Raider", officer: "Officer" };
 
-let tila = { raid: null, paikat: [], items: [], picks: {}, lukittu: false };
+let tila = { raid: null, paikat: [], items: [], picks: {}, tiedot: {}, lukittu: false };
 let avoinPaikka = null;
 
 const $ = (id) => document.getElementById(id);
@@ -20,34 +18,73 @@ const $ = (id) => document.getElementById(id);
 /* ---------- lataus ---------- */
 
 async function lataa() {
-  const [minaVastaus, nakymaVastaus] = await Promise.all([
-    fetch("/api/mina").then((r) => r.json()),
-    fetch("/api/nakyma").then((r) => r.json()),
-  ]);
+  try {
+    const [mina, nakyma] = await Promise.all([
+      fetch("/api/mina").then((r) => r.json()),
+      fetch("/api/nakyma").then((r) => r.json()),
+    ]);
 
-  if (!minaVastaus.ok) {
-    location.href = "/kirjaudu";
-    return;
+    if (!mina.ok) {
+      location.href = "/kirjaudu";
+      return;
+    }
+
+    $("nimi").textContent = mina.user.username;
+    $("rooli").textContent = ROOLIT[mina.user.role] || mina.user.role;
+    tila.lukittu = !!mina.user.locked;
+    $("lukkoilmoitus").hidden = !tila.lukittu;
+
+    if (!nakyma.ok) {
+      naytaViesti(nakyma.error || "Tietojen haku epäonnistui.");
+      return;
+    }
+
+    tila.raid = nakyma.raid;
+    tila.paikat = nakyma.paikat ?? [];
+    tila.items = nakyma.items ?? [];
+    tila.picks = nakyma.picks ?? {};
+    tila.tiedot = nakyma.tiedot ?? {};
+
+    $("raidi").textContent = tila.raid ? tila.raid.name : "Ei aktiivista raidia";
+    piirraPaikat();
+  } catch (err) {
+    naytaViesti("Virhe: " + (err && err.message ? err.message : String(err)));
+  }
+}
+
+/* ---------- itemin esitys ---------- */
+
+function tiedot(itemId) {
+  return tila.tiedot[itemId] || tila.tiedot[String(itemId)] || null;
+}
+
+/**
+ * Ikoni ja nimi laadun varissa. Jos tietoja ei ole, naytetaan id -
+ * sivusto ei saa jaada tyhjaksi siksi etta ulkopuolinen lahde ei vastannut.
+ */
+function itemElementti(itemId) {
+  const d = tiedot(itemId);
+  const kaari = document.createElement("span");
+  kaari.className = "item";
+  kaari.dataset.itemId = itemId;
+
+  const ikoni = document.createElement("span");
+  ikoni.className = "item-ikoni";
+  if (d && d.icon) {
+    const img = document.createElement("img");
+    img.src = IKONI + d.icon + ".jpg";
+    img.alt = "";
+    img.loading = "lazy";
+    ikoni.appendChild(img);
   }
 
-  const u = minaVastaus.user;
-  $("nimi").textContent = u.username;
-  $("rooli").textContent = ROOLIT[u.role] || u.role;
-  tila.lukittu = !!u.locked;
-  $("lukkoilmoitus").hidden = !tila.lukittu;
+  const nimi = document.createElement("span");
+  nimi.className = "item-nimi q" + (d && d.quality != null ? d.quality : 1);
+  nimi.textContent = d && d.name ? d.name : "item " + itemId;
 
-  if (!nakymaVastaus.ok) {
-    naytaViesti("Tietojen haku epäonnistui.");
-    return;
-  }
-
-  tila.raid = nakymaVastaus.raid;
-  tila.paikat = nakymaVastaus.paikat ?? [];
-  tila.items = nakymaVastaus.items ?? [];
-  tila.picks = nakymaVastaus.picks ?? {};
-
-  $("raidi").textContent = tila.raid ? tila.raid.name : "Ei aktiivista raidia";
-  piirraPaikat();
+  kaari.appendChild(ikoni);
+  kaari.appendChild(nimi);
+  return kaari;
 }
 
 /* ---------- piirto ---------- */
@@ -56,68 +93,40 @@ function piirraPaikat() {
   for (const alue of ["vasen", "oikea", "ala"]) $(alue).innerHTML = "";
 
   for (const paikka of tila.paikat) {
-    const nappi = document.createElement("button");
-    nappi.type = "button";
-    nappi.className = "paikka";
-    nappi.dataset.key = paikka.key;
-
     const valittu = tila.picks[paikka.key] ?? null;
 
-    nappi.innerHTML = `
-      <span class="ruutu"></span>
-      <span class="teksti">
-        <span class="otsikko">${paikka.nimi}</span>
-        <span class="arvo${valittu ? "" : " tyhja"}"></span>
-      </span>`;
+    const nappi = document.createElement("button");
+    nappi.type = "button";
+    nappi.className = "paikka" + (valittu ? " valittu" : "");
 
-    const arvo = nappi.querySelector(".arvo");
+    const otsikko = document.createElement("span");
+    otsikko.className = "otsikko";
+    otsikko.textContent = paikka.nimi;
+
+    const sisalto = document.createElement("span");
+    sisalto.className = "sisalto";
+
     if (valittu) {
-      // Wowhead korvaa linkin tekstin itemin nimella ja varittaa sen.
-      const a = document.createElement("a");
-      a.href = `${WH}/item=${valittu}`;
-      a.textContent = `item ${valittu}`;
-      arvo.appendChild(a);
-      nappi.classList.add("valittu");
+      sisalto.appendChild(itemElementti(valittu));
     } else {
-      arvo.textContent = "— ei valintaa —";
+      const tyhja = document.createElement("span");
+      tyhja.className = "tyhja";
+      tyhja.textContent = "— ei valintaa —";
+      sisalto.appendChild(tyhja);
     }
 
+    nappi.appendChild(otsikko);
+    nappi.appendChild(sisalto);
     nappi.addEventListener("click", () => avaaValitsin(paikka));
     $(paikka.puoli).appendChild(nappi);
-  }
-
-  paivitaWowhead();
-}
-
-/**
- * Pyytaa Wowheadin skriptia kasittelemaan juuri lisatyt linkit.
- *
- * Skripti kay sivun lapi kerran latauksessa. Kun linkkeja syntyy vasta
- * sen jalkeen, ne jaavat kasittelematta ellei sita pyydeta uudelleen.
- */
-function paivitaWowhead() {
-  // Ulkopuolinen skripti ei saa kaataa tallennusta. Jos Wowhead on alhaalla
-  // tai estetty, linkit jaavat pelkiksi id-numeroiksi - se on rumaa mutta
-  // sivusto toimii.
-  try {
-    const wh = window.$WowheadPower;
-    if (wh && typeof wh.refreshLinks === "function") wh.refreshLinks(true);
-  } catch (err) {
-    /* ei mitaan */
   }
 }
 
 /* ---------- valitsin ---------- */
 
 function avaaValitsin(paikka) {
-  if (tila.lukittu) {
-    naytaViesti("Profiili on lukittu.");
-    return;
-  }
-  if (!tila.raid) {
-    naytaViesti("Aktiivista raidia ei ole.");
-    return;
-  }
+  if (tila.lukittu) { naytaViesti("Profiili on lukittu."); return; }
+  if (!tila.raid)   { naytaViesti("Aktiivista raidia ei ole."); return; }
 
   avoinPaikka = paikka;
   $("valitsin-otsikko").textContent = paikka.nimi;
@@ -128,22 +137,24 @@ function avaaValitsin(paikka) {
   const sopivat = tila.items.filter((i) => i.slot === paikka.slot);
 
   if (sopivat.length === 0) {
-    lista.innerHTML =
-      '<p class="himmea">Tähän paikkaan ei ole itemejä tässä raidissa.</p>';
+    const p = document.createElement("p");
+    p.className = "himmea";
+    p.textContent = "Tähän paikkaan ei ole itemejä tässä raidissa.";
+    lista.appendChild(p);
   }
+
+  // Aakkosjarjestys nimen mukaan: numerojarjestys ei kerro katsojalle mitaan.
+  sopivat.sort((a, b) => {
+    const an = tiedot(a.item_id)?.name || String(a.item_id);
+    const bn = tiedot(b.item_id)?.name || String(b.item_id);
+    return an.localeCompare(bn);
+  });
 
   for (const item of sopivat) {
     const rivi = document.createElement("button");
     rivi.type = "button";
     rivi.className = "rivi";
-
-    const a = document.createElement("a");
-    a.href = `${WH}/item=${item.item_id}`;
-    a.textContent = `item ${item.item_id}`;
-    // Linkkia ei seurata: klikkaus on valinta, ei siirtyma Wowheadiin.
-    a.addEventListener("click", (e) => e.preventDefault());
-
-    rivi.appendChild(a);
+    rivi.appendChild(itemElementti(item.item_id));
 
     if (item.boss) {
       const boss = document.createElement("span");
@@ -157,11 +168,11 @@ function avaaValitsin(paikka) {
   }
 
   $("peite").hidden = false;
-  paivitaWowhead();
 }
 
 function suljeValitsin() {
   $("peite").hidden = true;
+  piilotaTooltip();
   avoinPaikka = null;
 }
 
@@ -191,18 +202,61 @@ async function tallenna(slotKey, itemId) {
     const uusi = await fetch("/api/nakyma").then((r) => r.json());
     if (uusi.ok) {
       tila.picks = uusi.picks ?? {};
+      tila.tiedot = uusi.tiedot ?? tila.tiedot;
       piirraPaikat();
     }
     naytaViesti(itemId ? "Tallennettu." : "Valinta poistettu.");
   } catch (err) {
-    // Virheen teksti nakyviin sellaisenaan.
-    //
-    // Tassa luki aiemmin pelkka "Yhteysvirhe", vaikka tallennus oli
-    // mennyt lapi ja vika oli vasta sen jalkeisessa piirrossa. Yleinen
-    // teksti vei tutkimuksen vaaraan suuntaan.
     naytaViesti("Virhe: " + (err && err.message ? err.message : String(err)));
     console.error("tallenna():", err);
   }
+}
+
+/* ---------- tooltip ---------- */
+
+const tooltip = $("tooltip");
+
+document.addEventListener("mouseover", (e) => {
+  const kohde = e.target.closest ? e.target.closest(".item") : null;
+  if (!kohde) return;
+
+  const d = tiedot(parseInt(kohde.dataset.itemId, 10));
+  if (!d || !d.tooltip) return;
+
+  // Sisalto on siivottu palvelimella: skriptit ja tapahtumakasittelijat
+  // on poistettu ennen kuin se tallennettiin.
+  tooltip.innerHTML = d.tooltip;
+  tooltip.hidden = false;
+  siirraTooltip(e);
+});
+
+document.addEventListener("mousemove", (e) => {
+  if (!tooltip.hidden) siirraTooltip(e);
+});
+
+document.addEventListener("mouseout", (e) => {
+  const kohde = e.target.closest ? e.target.closest(".item") : null;
+  if (kohde) piilotaTooltip();
+});
+
+function siirraTooltip(e) {
+  const marginaali = 16;
+  const leveys = tooltip.offsetWidth;
+  const korkeus = tooltip.offsetHeight;
+
+  let x = e.clientX + marginaali;
+  let y = e.clientY + marginaali;
+
+  if (x + leveys > window.innerWidth) x = e.clientX - leveys - marginaali;
+  if (y + korkeus > window.innerHeight) y = window.innerHeight - korkeus - 8;
+  if (y < 8) y = 8;
+
+  tooltip.style.left = x + "px";
+  tooltip.style.top = y + "px";
+}
+
+function piilotaTooltip() {
+  tooltip.hidden = true;
 }
 
 /* ---------- apurit ---------- */
@@ -213,11 +267,9 @@ function naytaViesti(teksti) {
   el.textContent = teksti;
   el.classList.add("nakyy");
   clearTimeout(viestiAjastin);
-  viestiAjastin = setTimeout(() => el.classList.remove("nakyy"), 2200);
+  viestiAjastin = setTimeout(() => el.classList.remove("nakyy"), 2600);
 }
 
-// Hahmokuva on valinnainen: jos tiedostoa ei ole, naytetaan teksti sen
-// sijaan etta jaisi rikkinainen kuvake.
 const hahmokuva = $("hahmokuva");
 if (hahmokuva) {
   hahmokuva.addEventListener("error", () => {
