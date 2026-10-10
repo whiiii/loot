@@ -17,8 +17,6 @@ let kaikki = [];
  * jokaiseen savyyn.
  */
 const KUVAKE = {
-  profiili:
-    '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle>',
   lukkoKiinni:
     '<rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>',
   lukkoAuki:
@@ -142,10 +140,17 @@ function piirra(users) {
 
     tr.appendChild(solu(u.username));
 
-    // Hahmon nimi luokan varissa, kuten pelissa.
-    const hahmo = solu(hahmonNimi(u));
-    hahmo.style.color = luokanVari(u.class);
-    hahmo.style.fontWeight = "600";
+    // Hahmon nimi luokan varissa, kuten pelissa - ja samalla linkki
+    // profiiliin. Nimi on se mita officer etsii listasta, joten se on myos
+    // luontevin paikka avata profiili.
+    const hahmo = document.createElement("td");
+    const linkki = document.createElement("a");
+    linkki.className = "hahmolinkki";
+    linkki.href = "/profiili?katso=" + encodeURIComponent(u.username);
+    linkki.textContent = hahmonNimi(u);
+    linkki.style.color = luokanVari(u.class);
+    linkki.title = "Avaa profiili";
+    hahmo.appendChild(linkki);
     tr.appendChild(hahmo);
 
     tr.appendChild(kenttaSolu(u, "class", LUOKKAPARIT, "— luokka —"));
@@ -155,16 +160,8 @@ function piirra(users) {
     rooli.appendChild(roolivalitsin(u));
     tr.appendChild(rooli);
 
-    // Valintojen maara on myos linkki profiiliin: se on se luku josta
-    // officer haluaa tietaa lisaa.
-    const valinnat = document.createElement("td");
+    const valinnat = solu(`${u.valintoja} / ${paikkoja}`);
     valinnat.className = "oikealle";
-    const katso = document.createElement("a");
-    katso.className = "nappi-linkki";
-    katso.href = "/profiili?katso=" + encodeURIComponent(u.username);
-    katso.textContent = `${u.valintoja} / ${paikkoja}`;
-    katso.title = "Avaa profiili";
-    valinnat.appendChild(katso);
     tr.appendChild(valinnat);
 
     const tila = document.createElement("td");
@@ -180,15 +177,6 @@ function piirra(users) {
     // suorassa, ja kuvake erottaa toiminnon nopeammin kuin sanan lukeminen.
     // Savy kertoo painoarvon - lukko odottaa tekemista, poisto on
     // peruuttamaton.
-    toiminto.appendChild(
-      teeNappi({
-        teksti: "Profiili",
-        kuvake: KUVAKE.profiili,
-        luokka: "nappi-hillitty",
-        osoite: "/profiili?katso=" + encodeURIComponent(u.username),
-      })
-    );
-
     toiminto.appendChild(
       teeNappi({
         teksti: u.locked ? "Avaa" : "Lukitse",

@@ -139,21 +139,15 @@
 }
 .nappi-vaara:hover { background: #2a1512; border-color: #c75c4a; color: #e8a79a; }
 
-/* Luku joka on samalla linkki profiiliin. */
-.nappi-linkki {
-  display: inline-block;
-  padding: .15rem .35rem;
-  border: 1px solid transparent;
-  border-radius: 5px;
-  color: var(--teksti);
-  font-size: .86rem;
+/* Hahmon nimi on linkki profiiliin.
+   Alleviivaus vasta hiiren alla: rivissa on jo varit ja valitsimet, eika
+   pysyva alleviivaus toisi mitaan mita vari ei jo kerro. */
+.hahmolinkki {
+  font-weight: 600;
   text-decoration: none;
+  border-bottom: 1px solid transparent;
 }
-.nappi-linkki:hover {
-  border-color: var(--reuna);
-  background: #241e16;
-  color: var(--korostus);
-}
+.hahmolinkki:hover { border-bottom-color: currentColor; }
 
 /* Lajiteltavat otsikot. */
 .lista th[data-lajittele] {
