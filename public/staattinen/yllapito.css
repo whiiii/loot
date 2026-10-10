@@ -73,7 +73,91 @@
 }
 .roolivalinta:focus { outline: none; border-color: var(--korostus); }
 
-.napit { display: flex; gap: .5rem; flex-wrap: wrap; }
+/* Nappien kolme sävyä.
+   Sama ulkoasu kaikille tarkoittaa etta peruuttamaton toiminto nayttaa
+   yhta vaarattomalta kuin arkinen - ja silloin se joskus klikataan. */
+
+.nappi-ensisijainen,
+.nappi-hillitty,
+.nappi-korostus,
+.nappi-vaara {
+  width: auto;
+  padding: .35rem .75rem;
+  border-radius: 7px;
+  font: inherit;
+  font-size: .8rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+/* Ensisijainen: tayttava, sivun paatoiminto. */
+.nappi-ensisijainen {
+  background: var(--korostus);
+  border-color: var(--korostus);
+  color: #1a1407;
+}
+.nappi-ensisijainen:hover { filter: brightness(1.08); }
+
+/* Hillitty: arkinen toiminto, ei huuda. */
+.nappi-hillitty {
+  background: transparent;
+  border-color: var(--reuna);
+  color: var(--himmea);
+}
+.nappi-hillitty:hover { background: #241e16; color: var(--teksti); }
+
+/* Korostus: toiminto joka odottaa tekemista, kuten avaamaton lukko. */
+.nappi-korostus {
+  background: #221b0d;
+  border-color: #6b5a2a;
+  color: #e3cd8d;
+}
+.nappi-korostus:hover { background: #2c230f; }
+
+/* Vaarallinen: peruuttamaton. */
+.nappi-vaara {
+  background: transparent;
+  border-color: #5e3029;
+  color: #d08a7e;
+}
+.nappi-vaara:hover { background: #2a1512; border-color: #c75c4a; color: #e8a79a; }
+
+/* Lomake. */
+.lomake {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .75rem 1rem;
+  align-items: flex-end;
+}
+
+.kentta { display: flex; flex-direction: column; min-width: 170px; flex: 1 1 170px; }
+.kentta.kapea { flex: 0 0 130px; min-width: 130px; }
+.kentta.nappirivi { flex: 0 0 auto; min-width: 0; }
+
+.kentta label {
+  margin-bottom: .3rem;
+  font-size: .74rem;
+  color: var(--himmea);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.kentta input {
+  width: 100%;
+  margin: 0;
+  padding: .45rem .6rem;
+  background: #120f0a;
+  border: 1px solid var(--reuna);
+  border-radius: 7px;
+  color: var(--teksti);
+  font: inherit;
+  font-size: .86rem;
+}
+.kentta input:focus { outline: none; border-color: var(--korostus); }
+.kentta .roolivalinta { padding: .45rem .6rem; font-size: .86rem; }
+
+.napit { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
 
 textarea {
   width: 100%;

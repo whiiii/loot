@@ -29,12 +29,10 @@ async function lataa() {
       return;
     }
 
-    // Hahmon nimi kuvan ylla, kirjautumistunnus palkissa. Ne ovat eri
-    // asioita: hahmo on se mita raidissa katsotaan, tunnus se milla
-    // kirjaudutaan.
+    // Nakyvissa on hahmon nimi, ei kirjautumistunnus. Raidissa katsotaan
+    // hahmoa, ja tunnus on vain tapa paasta sisaan.
     $("nimi").textContent = mina.user.character_name || mina.user.username;
     $("rooli").textContent = ROOLIT[mina.user.role] || mina.user.role;
-    $("tunnus").textContent = mina.user.username;
     tila.rooli = mina.user.role;
 
     // Lukko ei rajoita officeria, joten hanelle se ei ole "lukittu" tila

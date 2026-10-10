@@ -45,12 +45,44 @@
   </section>
 
   <section>
+    <h2>Uusi jäsen</h2>
+    <form class="lomake" id="uusi" autocomplete="off">
+      <div class="kentta">
+        <label for="u-tunnus">Tunnus</label>
+        <input type="text" id="u-tunnus" required maxlength="20"
+               placeholder="kirjautumistunnus">
+      </div>
+      <div class="kentta">
+        <label for="u-hahmo">Hahmo</label>
+        <input type="text" id="u-hahmo" maxlength="40"
+               placeholder="sama kuin tunnus">
+      </div>
+      <div class="kentta kapea">
+        <label for="u-rooli">Rooli</label>
+        <select id="u-rooli" class="roolivalinta">
+          <option value="social">Social</option>
+          <option value="raider" selected>Raider</option>
+          <option value="officer">Officer</option>
+        </select>
+      </div>
+      <div class="kentta">
+        <label for="u-salasana">Salasana</label>
+        <input type="text" id="u-salasana" required minlength="6"
+               placeholder="vähintään 6 merkkiä">
+      </div>
+      <div class="kentta nappirivi">
+        <button type="submit" class="nappi-ensisijainen">Luo jäsen</button>
+      </div>
+    </form>
+  </section>
+
+  <section>
     <h2>Vienti addoniin</h2>
     <p class="himmea pieni-teksti" id="vientitiedot">
       Luo teksti, jonka liität addoniin pelissä.
     </p>
     <div class="napit">
-      <button class="pieni" id="luo-vienti">Luo vienti</button>
+      <button class="nappi-ensisijainen" id="luo-vienti">Luo vienti</button>
       <button class="pieni" id="kopioi" hidden>Kopioi leikepöydälle</button>
     </div>
     <textarea id="vienti" rows="10" spellcheck="false" readonly hidden></textarea>

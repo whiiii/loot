@@ -96,6 +96,99 @@ export async function vaihdaRooli(env, actor, username, rooli) {
 
 export const SALASANA_MIN = 6;
 
+/** Tunnuksessa vain kirjaimia, numeroita, alaviiva ja valiviiva. */
+const TUNNUS_SAANTO = /^[A-Za-z0-9_-]{3,20}$/;
+
+/**
+ * Luo uuden kayttajan.
+ *
+ * Hahmon nimi saa olla tyhja, jolloin se on sama kuin tunnus. Useimmissa
+ * killoissa ne ovat sama asia, eika turhaa kenttaa kannata pakottaa.
+ */
+export async function luoKayttaja(env, actor, tiedot) {
+  const tunnus = String(tiedot.username ?? "").trim();
+  const hahmo = String(tiedot.character_name ?? "").trim();
+  const rooli = String(tiedot.role ?? "raider");
+  const salasana = String(tiedot.password ?? "");
+
+  if (!TUNNUS_SAANTO.test(tunnus)) {
+    return {
+      error:
+        "Tunnus: 3–20 merkkiä, vain kirjaimia, numeroita, alaviiva tai väliviiva.",
+      status: 400,
+    };
+  }
+  if (!ROOLIT.includes(rooli)) return { error: "Tuntematon rooli.", status: 400 };
+  if (salasana.length < SALASANA_MIN) {
+    return {
+      error: `Salasanan on oltava vähintään ${SALASANA_MIN} merkkiä.`,
+      status: 400,
+    };
+  }
+
+  const varattu = await env.DB.prepare(
+    "SELECT id FROM users WHERE username = ?"
+  )
+    .bind(tunnus)
+    .first();
+
+  if (varattu) return { error: "Tunnus on jo käytössä.", status: 409 };
+
+  const tiiviste = await hashPassword(salasana);
+
+  await env.DB.prepare(
+    `INSERT INTO users (username, password_hash, role, character_name)
+     VALUES (?, ?, ?, ?)`
+  )
+    .bind(tunnus, tiiviste, rooli, hahmo || tunnus)
+    .run();
+
+  await kirjaa(env, actor, "LUO_KAYTTAJA", tunnus, `rooli=${rooli}`);
+  return { ok: true, username: tunnus };
+}
+
+/**
+ * Poistaa kayttajan.
+ *
+ * Valinnat ja istunnot katoavat mukana, mutta loottihistoria ei: siina
+ * viite kayttajaan tyhjenee ja hahmon nimi jaa. Historian kuuluu kertoa
+ * mita raidissa tapahtui, ei sita ketka ovat yha killassa.
+ *
+ * Viimeista officeria ei voi poistaa, eika itseaan - kumpikin jattaisi
+ * tilanteen jota ei saa itse korjattua.
+ */
+export async function poistaKayttaja(env, actor, username) {
+  const kohde = await env.DB.prepare(
+    "SELECT id, username, role FROM users WHERE username = ?"
+  )
+    .bind(username)
+    .first();
+
+  if (!kohde) return { error: "Käyttäjää ei löydy.", status: 404 };
+
+  if (kohde.username.toLowerCase() === String(actor).toLowerCase()) {
+    return { error: "Et voi poistaa omaa tunnustasi.", status: 409 };
+  }
+
+  if (kohde.role === "officer") {
+    const rivi = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM users WHERE role = 'officer'"
+    ).first();
+
+    if ((rivi?.n ?? 0) <= 1) {
+      return {
+        error: "Tämä on viimeinen officer. Nimeä ensin toinen officer.",
+        status: 409,
+      };
+    }
+  }
+
+  await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(kohde.id).run();
+
+  await kirjaa(env, actor, "POISTA_KAYTTAJA", kohde.username, `rooli=${kohde.role}`);
+  return { ok: true, username: kohde.username };
+}
+
 /**
  * Officer asettaa kayttajalle uuden salasanan.
  *

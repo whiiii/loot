@@ -56,17 +56,25 @@ function piirra(users) {
     const toiminto = document.createElement("td");
     toiminto.className = "toiminnot";
 
+    // Napit eroavat toisistaan tarkoituksella. Lukko on arkinen toiminto,
+    // salasana hillitty, poisto peruuttamaton - ja sen pitaa nayttaa silta.
     const lukko = document.createElement("button");
-    lukko.className = "pieni";
+    lukko.className = u.locked ? "nappi-korostus" : "nappi-hillitty";
     lukko.textContent = u.locked ? "Avaa lukko" : "Lukitse";
     lukko.addEventListener("click", () => vaihdaLukko(u.username, !u.locked));
     toiminto.appendChild(lukko);
 
     const salasana = document.createElement("button");
-    salasana.className = "pieni";
-    salasana.textContent = "Vaihda salasana";
+    salasana.className = "nappi-hillitty";
+    salasana.textContent = "Salasana";
     salasana.addEventListener("click", () => vaihdaSalasana(u.username));
     toiminto.appendChild(salasana);
+
+    const poista = document.createElement("button");
+    poista.className = "nappi-vaara";
+    poista.textContent = "Poista";
+    poista.addEventListener("click", () => poistaKayttaja(u));
+    toiminto.appendChild(poista);
 
     tr.appendChild(toiminto);
 
@@ -210,6 +218,83 @@ async function vaihdaSalasana(username) {
       return;
     }
     naytaViesti(`${username}: salasana vaihdettu.`);
+  } catch (err) {
+    naytaViesti("Virhe: " + (err && err.message ? err.message : String(err)));
+  }
+}
+
+/* ---------- jäsenten luonti ja poisto ---------- */
+
+document.getElementById("uusi").addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const tiedot = {
+    username: $("u-tunnus").value.trim(),
+    character_name: $("u-hahmo").value.trim(),
+    role: $("u-rooli").value,
+    password: $("u-salasana").value,
+  };
+
+  const ok = await vahvista({
+    otsikko: "Luo jäsen",
+    teksti:
+      `Tunnus: ${tiedot.username}\n` +
+      `Hahmo: ${tiedot.character_name || tiedot.username}\n` +
+      `Rooli: ${ROOLIT[tiedot.role]}\n\n` +
+      "Kerro salasana hänelle itse — sitä ei lähetetä mihinkään.",
+    vahvista: "Luo",
+  });
+  if (!ok) return;
+
+  try {
+    const d = await fetch("/api/kayttaja", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(tiedot),
+    }).then((r) => r.json());
+
+    if (!d.ok) {
+      naytaViesti(d.error || "Luonti ei onnistunut.");
+      return;
+    }
+
+    naytaViesti(`${d.username} luotu.`);
+    $("u-tunnus").value = "";
+    $("u-hahmo").value = "";
+    $("u-salasana").value = "";
+    $("u-rooli").value = "raider";
+    lataa();
+  } catch (err) {
+    naytaViesti("Virhe: " + (err && err.message ? err.message : String(err)));
+  }
+});
+
+async function poistaKayttaja(u) {
+  const ok = await vahvista({
+    otsikko: "Poista jäsen",
+    teksti:
+      `${u.username} poistetaan pysyvästi.\n\n` +
+      "Hänen valintansa katoavat, mutta loottihistoria jää tallelle.\n\n" +
+      "Tätä ei voi perua.",
+    vahvista: "Poista pysyvästi",
+    peruuta: "Älä poista",
+    varoitus: true,
+  });
+  if (!ok) return;
+
+  try {
+    const d = await fetch("/api/poista", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username: u.username }),
+    }).then((r) => r.json());
+
+    if (!d.ok) {
+      naytaViesti(d.error || "Poisto ei onnistunut.");
+      return;
+    }
+    naytaViesti(`${u.username} poistettu.`);
+    lataa();
   } catch (err) {
     naytaViesti("Virhe: " + (err && err.message ? err.message : String(err)));
   }

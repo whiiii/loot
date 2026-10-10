@@ -24,7 +24,9 @@ import {
   asetaLukko,
   asetaSalasana,
   haeKayttajat,
+  luoKayttaja,
   lukitseOma,
+  poistaKayttaja,
   teeVienti,
   vaihdaRooli,
 } from "./yllapito.js";
@@ -203,6 +205,21 @@ async function rajapinta(request, env, polku) {
       kayttaja.username,
       String(body.username ?? ""),
       String(body.password ?? "")
+    );
+    return json(tulos, tulos.error ? tulos.status : 200);
+  }
+
+  if (polku === "/api/kayttaja" && request.method === "POST") {
+    const tulos = await luoKayttaja(env, kayttaja.username, await lueJson(request));
+    return json(tulos, tulos.error ? tulos.status : 200);
+  }
+
+  if (polku === "/api/poista" && request.method === "POST") {
+    const body = await lueJson(request);
+    const tulos = await poistaKayttaja(
+      env,
+      kayttaja.username,
+      String(body.username ?? "")
     );
     return json(tulos, tulos.error ? tulos.status : 200);
   }
