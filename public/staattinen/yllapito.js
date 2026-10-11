@@ -358,30 +358,31 @@ function solu(teksti) {
 /**
  * Suojatun yllapitotunnuksen rivi.
  *
- * Yksi solu koko leveydelta: tunnus, merkki ja lause siita miksi muut
- * sarakkeet ovat tyhjia. Oikeassa reunassa salasananappi, mutta vain
- * omalla rivilla - muuten se lupaisi toimen jota palvelin ei salli.
+ * Tasmalleen sama solurakenne kuin muilla riveilla: yhdeksan tavallista
+ * solua, ei colspania eika omia display-saantoja. Erilainen rakenne
+ * kaattaa taulukon rivikorkeuden, ja rivi venyi moninkertaiseksi.
+ *
+ * Tyhjat solut jatetaan oikeasti tyhjiksi. Viiva jokaisessa sarakkeessa
+ * nayttaisi silta kuin tieto puuttuisi, vaikka sita ei ole olemassakaan.
  */
 function yllapitoRivi(u) {
   const tr = document.createElement("tr");
-  tr.className = "yllapitorivi";
 
   tr.appendChild(solu(u.username));
 
-  const td = document.createElement("td");
-  td.colSpan = 7;
-  td.className = "yllapitosolu";
-  td.appendChild(merkki("Ylläpito", "yllapito"));
+  const hahmo = document.createElement("td");
+  const tunniste = merkki("Ylläpito", "yllapito");
+  tunniste.title = "Sivuston varauloskäynti — ei hahmo, ei muokattavissa.";
+  hahmo.appendChild(tunniste);
+  tr.appendChild(hahmo);
 
-  const selite = document.createElement("span");
-  selite.className = "himmea";
-  selite.textContent =
-    "Sivuston varauloskäynti — ei hahmo, ei muokattavissa.";
-  td.appendChild(selite);
-  tr.appendChild(td);
+  // Luokka, rooli, rank, valinnat, saatu, tila.
+  for (let i = 0; i < 6; i++) tr.appendChild(solu(""));
 
   const toiminto = document.createElement("td");
 
+  // Salasanan saa vaihtaa vain tunnus itse, joten nappi on vain omalla
+  // rivilla. Muualla se lupaisi toimen jota palvelin ei salli.
   if (minaOlen && minaOlen.toLowerCase() === u.username.toLowerCase()) {
     toiminto.className = "toiminnot";
     toiminto.appendChild(

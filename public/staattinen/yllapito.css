@@ -87,23 +87,14 @@
 .merkki.rooli  { color: var(--himmea); border-color: var(--reuna); background: transparent; }
 
 /* Ylläpitotunnus.
-   Yksi solu koko leveydeltä: rivi ei ole hahmo, joten sarakkeissa ei ole
-   mitään sanottavaa. Kulta erottaa sen listasta ilman omaa laatikkoa. */
+   Rivi on rakenteeltaan samanlainen kuin muut — pelkkä merkki erottaa sen.
+   Oma taustaväri tai leveä solu tekisi siitä lohkareen keskelle listaa. */
 .merkki.yllapito {
   color: var(--kulta);
   border-color: var(--kulta-tumma);
   background: transparent;
   letter-spacing: .04em;
 }
-
-.lista tr.yllapitorivi { background: rgba(201,162,39,.035); }
-.lista tr.yllapitorivi td { border-bottom-color: rgba(201,162,39,.12); }
-
-.lista .yllapitosolu {
-  display: table-cell;
-  white-space: nowrap;
-}
-.lista .yllapitosolu .himmea { margin-left: .6rem; }
 
 .roolivalinta {
   padding: .25rem .4rem;
