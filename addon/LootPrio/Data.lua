@@ -213,11 +213,17 @@ function NS.LisaaHistoriaan(itemId, nimi, luku, koodi, itemNimi)
   local id = NS.db.historiaSeuraavaId or 1
   NS.db.historiaSeuraavaId = id + 1
 
+  -- Instanssi ja koko kirjataan jaon hetkella eika viennissa: sama
+  -- historia voi sisaltaa kaksi iltaa, jos vienti unohtui valilla.
+  local alue, koko = NS.Instanssi()
+
   NS.db.historia[#NS.db.historia + 1] = {
     id = id,
     itemId = itemId,
     nimi = nimi,
     luku = luku,
+    alue = alue,
+    koko = koko,
     -- Peruste talletetaan numeron rinnalle: "kuka sai ja milla napilla"
     -- on se mita historiasta myohemmin kysytaan.
     koodi = koodi,
@@ -247,17 +253,37 @@ end
 ---
 --- Sama rivipohjainen muoto kuin tuonnissa, vastakkaiseen suuntaan.
 function NS.HistoriaTeksti()
+  -- Otsikon instanssi ja koko: ensisijaisesti se missa ollaan nyt, muuten
+  -- viimeisimman jaon paikka. Sivusto nimeaa lokin naiden perusteella.
+  local alue, koko = NS.Instanssi()
+
+  if not alue then
+    for i = #NS.db.historia, 1, -1 do
+      if NS.db.historia[i].alue then
+        alue = NS.db.historia[i].alue
+        koko = NS.db.historia[i].koko or koko
+        break
+      end
+    end
+  end
+
   local rivit = {
     "LOOTHIST1",
     "RAID=" .. (NS.db.raidinNimi or "?"),
     "TIME=" .. date("%Y-%m-%d %H:%M:%S"),
   }
 
+  if alue then rivit[#rivit + 1] = "ZONE=" .. alue end
+  if koko and koko > 0 then rivit[#rivit + 1] = "SIZE=" .. koko end
+
   for _, r in ipairs(NS.db.historia) do
-    rivit[#rivit + 1] = ("L=%d|%s|%s|%s|%s"):format(
+    -- Instanssi myos rivikohtaisesti: jos sama vienti sisaltaa kaksi
+    -- iltaa, otsikko voi kertoa vain toisen.
+    rivit[#rivit + 1] = ("L=%d|%s|%s|%s|%s|%s"):format(
       r.itemId, r.nimi, r.aika,
       r.luku and tostring(r.luku) or "-",
-      r.koodi or "-")
+      r.koodi or "-",
+      r.alue or "-")
   end
 
   return table.concat(rivit, "\n")

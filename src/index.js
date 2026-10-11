@@ -34,6 +34,7 @@ import {
   tuoHistoria,
   vaihdaRooli,
 } from "./yllapito.js";
+import { haeTuonnit, haeTuonti, poistaTuonti } from "./tuonnit.js";
 
 export default {
   async fetch(request, env) {
@@ -106,6 +107,16 @@ async function sivu(request, env, polku) {
       return Response.redirect(new URL("/profiili", request.url).toString(), 302);
     }
     return tiedosto(request, env, "/yllapito.html");
+  }
+
+  if (polku === "/historia") {
+    if (!kayttaja) {
+      return Response.redirect(new URL("/kirjaudu", request.url).toString(), 302);
+    }
+    if (kayttaja.role !== "officer") {
+      return Response.redirect(new URL("/profiili", request.url).toString(), 302);
+    }
+    return tiedosto(request, env, "/historia.html");
   }
 
   return tiedosto(request, env, polku);
@@ -268,7 +279,35 @@ async function rajapinta(request, env, polku) {
 
   if (polku === "/api/historia" && request.method === "POST") {
     const body = await lueJson(request);
-    const tulos = await tuoHistoria(env, kayttaja.username, String(body.teksti ?? ""));
+    const tulos = await tuoHistoria(
+      env,
+      kayttaja.username,
+      String(body.teksti ?? ""),
+      body.label
+    );
+    return json(tulos, tulos.error ? tulos.status : 200);
+  }
+
+  /* ---------- tuontilokit ---------- */
+
+  if (polku === "/api/tuonnit") {
+    return json({ ok: true, ...(await haeTuonnit(env)) });
+  }
+
+  if (polku === "/api/tuonti") {
+    const id = parseInt(new URL(request.url).searchParams.get("id") ?? "", 10);
+    if (!Number.isFinite(id)) return json({ error: "Puuttuva id." }, 400);
+
+    const tulos = await haeTuonti(env, id);
+    return json(tulos, tulos.error ? tulos.status : 200);
+  }
+
+  if (polku === "/api/tuonti-poista" && request.method === "POST") {
+    const body = await lueJson(request);
+    const id = parseInt(body.id, 10);
+    if (!Number.isFinite(id)) return json({ error: "Puuttuva id." }, 400);
+
+    const tulos = await poistaTuonti(env, kayttaja.username, id);
     return json(tulos, tulos.error ? tulos.status : 200);
   }
 

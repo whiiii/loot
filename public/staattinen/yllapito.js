@@ -620,7 +620,7 @@ $("tuo-historia").addEventListener("click", async () => {
     const d = await fetch("/api/historia", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ teksti }),
+      body: JSON.stringify({ teksti, label: $("tuonti-nimi").value.trim() }),
     }).then((r) => r.json());
 
     if (!d.ok) {
@@ -637,8 +637,11 @@ $("tuo-historia").addEventListener("click", async () => {
     }
     if (d.ohitettu > 0) osat.push(`${d.ohitettu} riviä ohitettu`);
 
-    $("tuontitiedot").textContent = osat.join(" · ");
+    osat.push('<a href="/historia">Katso loki</a>');
+
+    $("tuontitiedot").innerHTML = osat.join(" · ");
     $("historia").value = "";
+    $("tuonti-nimi").value = "";
     naytaViesti("Loottihistoria tuotu.");
     lataa();
   } catch (err) {

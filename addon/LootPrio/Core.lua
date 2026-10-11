@@ -1,4 +1,4 @@
---[[
+﻿--[[
   LootPrio — perusta.
 
   Addon ei paase verkkoon: WoW ei anna Lua-koodille mitaan yhteytta
@@ -9,7 +9,7 @@
 local ADDON, NS = ...
 
 NS.NIMI = ADDON
-NS.VERSIO = "0.6"
+NS.VERSIO = "0.7"
 NS.VARI = "|cffc9a227"   -- sama kulta kuin sivustolla
 NS.LOPPU = "|r"
 
@@ -153,6 +153,30 @@ function NS.OnLootMaster()
 
   -- Ryhmassa 0 tarkoittaa pelaajaa itseaan.
   return mlPartyID == 0
+end
+
+--- Missa ollaan ja kuinka suuri raidi on.
+---
+--- Sivusto erottaa illat toisistaan naiden perusteella: samalla viikolla
+--- voi olla yksi 40-man ja pari 20-man, eri lootmastereilla. Ilman
+--- instanssia ja kokoa lokit nayttaisivat jalkikateen samanlaisilta.
+function NS.Instanssi()
+  local nimi, tyyppi, _, _, maxKoko, _, _, _, ryhmanKoko = GetInstanceInfo()
+
+  -- Instanssin ulkopuolella nimi on maailmankartan alue, joka ei kerro
+  -- raidista mitaan.
+  if tyyppi ~= "raid" and tyyppi ~= "party" then nimi = nil end
+
+  local koko = 0
+  if maxKoko and maxKoko > 0 then
+    koko = maxKoko
+  elseif ryhmanKoko and ryhmanKoko > 0 then
+    koko = ryhmanKoko
+  else
+    koko = GetNumGroupMembers() or 0
+  end
+
+  return nimi, koko
 end
 
 --- Itemin numero linkista. Linkki on muotoa |cff...|Hitem:19019:...

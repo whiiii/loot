@@ -143,6 +143,11 @@ CREATE TABLE IF NOT EXISTS loot_history (
   user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
   boss       TEXT,
 
+  -- Mista tuonnista rivi tuli ja missa instanssissa se jaettiin. Viikossa
+  -- voi olla useita raideja, joten rivi ilman lokia on irrallinen tieto.
+  import_id  INTEGER REFERENCES loot_import(id),
+  zone       TEXT,
+
   -- Milla perusteella item annettiin: prio, main, off, muu. Addonin
   -- vastausnapin koodi sellaisenaan. "Kuka sai ja milla napilla" on se mita
   -- historiasta jalkikateen kysytaan, joten numeron rinnalla talletetaan
@@ -158,6 +163,40 @@ CREATE TABLE IF NOT EXISTS loot_history (
 );
 CREATE INDEX IF NOT EXISTS idx_loot_user ON loot_history(user_id);
 CREATE INDEX IF NOT EXISTS idx_loot_raid ON loot_history(raid_id);
+CREATE INDEX IF NOT EXISTS idx_loot_import ON loot_history(import_id);
+
+
+-- Tuontilokit.
+--
+-- Viikossa voi olla useita raideja eri kokoonpanoilla: yksi 40-man ja pari
+-- 20-man. Jokainen on oma iltansa ja oma lootmasterinsa, joten jokainen
+-- tuonti on oma lokinsa eika yksi yhteinen kasa.
+--
+-- raw_text tallettaa addonin tekstin sellaisenaan. Se on varmuuskopio: jos
+-- tuonti menee vikaan tai rivi katoaa, alkuperainen on tallessa eika sita
+-- tarvitse pyytaa lootmasterilta uudelleen.
+CREATE TABLE IF NOT EXISTS loot_import (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+
+  -- Officerin antama nimi, esim. "MC 40 ke". Vapaaehtoinen: ilman sita
+  -- lista nayttaa instanssin ja koon.
+  label        TEXT,
+
+  zone         TEXT,
+  raid_size    INTEGER,
+  source_raid  TEXT,
+  source_time  TEXT,
+
+  imported_by  TEXT NOT NULL,
+  imported_at  TEXT NOT NULL DEFAULT (datetime('now')),
+
+  rows_total   INTEGER NOT NULL DEFAULT 0,
+  rows_new     INTEGER NOT NULL DEFAULT 0,
+  rows_skipped INTEGER NOT NULL DEFAULT 0,
+
+  raw_text     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_import_aika ON loot_import(imported_at DESC);
 
 
 -- Officerin toimet jaavat nakyviin.
@@ -194,5 +233,5 @@ CREATE TABLE IF NOT EXISTS item_cache (
 );
 
 
-INSERT INTO settings (key, value) VALUES ('schema_version', '6')
+INSERT INTO settings (key, value) VALUES ('schema_version', '7')
   ON CONFLICT(key) DO UPDATE SET value = excluded.value;

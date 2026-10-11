@@ -22,6 +22,11 @@ import {
  */
 const PERUSTEET = new Set(["prio", "main", "off", "muu"]);
 
+/** Addon merkitsee puuttuvan kentan viivalla. Se ei ole arvo. */
+function tyhjaViiva(arvo) {
+  return !arvo || arvo === "-" ? null : arvo;
+}
+
 /**
  * Hahmon nimi pelissa, SQL-lausekkeena.
  *
@@ -456,16 +461,23 @@ export async function paivitaHahmo(env, actor, username, muutokset) {
  *   LOOTHIST1
  *   RAID=Molten Core
  *   TIME=2026-10-10 20:05:00
- *   L=<itemId>|<voittaja>|<aika>|<roll tai ->|<peruste tai ->
+ *   ZONE=Molten Core
+ *   SIZE=40
+ *   L=<itemId>|<voittaja>|<aika>|<roll tai ->|<peruste tai ->|<instanssi>
  *
- * Kaksi viimeista kenttaa ovat vapaaehtoisia: addonin vanhempi versio ei
- * lahettanyt niita, ja vanha vienti pitaa silti voida tuoda.
+ * Kaikki RAID- ja TIME-rivien jalkeinen on vapaaehtoista: addonin vanhempi
+ * versio ei lahettanyt niita, ja vanha vienti pitaa silti voida tuoda.
  *
- * Tuonti on idempotentti: taulun UNIQUE estaa saman rivin kahdentumisen,
- * joten saman viennin voi tuoda uudelleen. Se on olennaista, koska tuonti
- * on kasityota eika kasityon toistumista voi estaa.
+ * Jokainen tuonti on oma lokinsa. Viikossa voi olla yksi 40-man ja pari
+ * 20-man, eri lootmastereilla ja eri iltoina - yhteen kasaan sulautettuna
+ * ei jalkikateen nakisi kumpi ilta oli kyseessa.
+ *
+ * Rivien tuonti on idempotentti: taulun UNIQUE estaa saman rivin
+ * kahdentumisen, joten saman viennin voi tuoda uudelleen. Se on olennaista,
+ * koska tuonti on kasityota eika kasityon toistumista voi estaa. Loki
+ * syntyy silti joka kerta, ja siita nakee etta tuonti oli tyhja.
  */
-export async function tuoHistoria(env, actor, teksti) {
+export async function tuoHistoria(env, actor, teksti, nimilappu) {
   if (typeof teksti !== "string" || !teksti.trim()) {
     return { error: "Teksti puuttuu.", status: 400 };
   }
@@ -477,6 +489,13 @@ export async function tuoHistoria(env, actor, teksti) {
 
   const raidi = await haeAktiiviRaidi(env);
   const raidId = raidi ? raidi.id : null;
+
+  const otsikko = {
+    raid: (siisti.match(/^RAID=(.*)$/m)?.[1] ?? "").trim() || null,
+    aika: (siisti.match(/^TIME=(.*)$/m)?.[1] ?? "").trim() || null,
+    alue: (siisti.match(/^ZONE=(.*)$/m)?.[1] ?? "").trim() || null,
+    koko: parseInt((siisti.match(/^SIZE=(.*)$/m)?.[1] ?? "").trim(), 10),
+  };
 
   // Kayttajat kerran muistiin, jottei jokaista rivia kohden tehda kyselya.
   const kayttajat = await env.DB.prepare(
@@ -516,6 +535,10 @@ export async function tuoHistoria(env, actor, teksti) {
       aika,
       luku: Number.isFinite(luku) ? luku : null,
       koodi: PERUSTEET.has(koodi) ? koodi : null,
+      // Rivikohtainen instanssi, jos addon kertoi sen. Viiva tarkoittaa
+      // addonin kielessa tyhjaa, joten se ei kelpaa nimeksi. Otsikon arvo
+      // on varalla: yhden illan vienti on yleensa yhdesta paikasta.
+      alue: tyhjaViiva((osat[5] || "").trim()) || otsikko.alue,
       userId: nimella.get(voittaja.toLowerCase()) ?? null,
     });
   }
@@ -524,29 +547,58 @@ export async function tuoHistoria(env, actor, teksti) {
     return { error: "Yhtään riviä ei löytynyt.", status: 400 };
   }
 
+  // Loki ensin, jotta rivit voidaan kiinnittaa siihen. Luvut paivitetaan
+  // lopuksi - ne tiedetaan vasta kun tiedetaan mika meni lapi.
+  const loki = await env.DB.prepare(
+    `INSERT INTO loot_import
+       (label, zone, raid_size, source_raid, source_time, imported_by, raw_text)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  )
+    .bind(
+      (typeof nimilappu === "string" && nimilappu.trim().slice(0, 60)) || null,
+      otsikko.alue,
+      Number.isFinite(otsikko.koko) ? otsikko.koko : null,
+      otsikko.raid,
+      otsikko.aika,
+      actor,
+      siisti
+    )
+    .run();
+
+  const lokiId = loki.meta?.last_row_id ?? null;
+
   // Erissa, koska batch ottaa rajallisen maaran kerralla.
   let kirjattu = 0;
   for (let i = 0; i < rivit.length; i += 50) {
     const era = rivit.slice(i, i + 50).map((r) =>
       env.DB.prepare(
         `INSERT INTO loot_history
-           (raid_id, item_id, winner, user_id, response, roll,
-            awarded_at, awarded_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           (raid_id, import_id, item_id, winner, user_id, response, roll,
+            zone, awarded_at, awarded_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(item_id, winner, awarded_at) DO NOTHING`
-      ).bind(raidId, r.itemId, r.voittaja, r.userId, r.koodi, r.luku,
-        r.aika, actor)
+      ).bind(raidId, lokiId, r.itemId, r.voittaja, r.userId, r.koodi, r.luku,
+        r.alue, r.aika, actor)
     );
 
     const tulokset = await env.DB.batch(era);
     for (const t of tulokset) kirjattu += t.meta?.changes ?? 0;
   }
 
-  await kirjaa(env, actor, "TUO_HISTORIA", null,
+  await env.DB.prepare(
+    `UPDATE loot_import
+        SET rows_total = ?, rows_new = ?, rows_skipped = ?
+      WHERE id = ?`
+  )
+    .bind(rivit.length, kirjattu, ohitettu, lokiId)
+    .run();
+
+  await kirjaa(env, actor, "TUO_HISTORIA", String(lokiId),
     `${rivit.length} riviä, ${kirjattu} uutta`);
 
   return {
     ok: true,
+    id: lokiId,
     rivit: rivit.length,
     uusia: kirjattu,
     ohitettu,

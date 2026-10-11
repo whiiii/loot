@@ -828,7 +828,14 @@ local function piirraHistoria()
     tyhjennaNappi:SetPoint("BOTTOMLEFT", 156, 4)
   end
 
-  kehys.ohje:SetText(("Jaettuja itemeitä: %s%d|r"):format(KULTA, #NS.db.historia))
+  -- Instanssi nakyviin: sivusto nimeaa lokin sen mukaan, ja jos tassa
+  -- lukee vaara paikka, vienti kannattaa tehda ennen seuraavaa raidia.
+  local alue, koko = NS.Instanssi()
+  local paikka = alue and (alue .. (koko > 0 and (" " .. koko .. "-man") or ""))
+
+  kehys.ohje:SetText(("Jaettuja itemeitä: %s%d|r   %s"):format(
+    KULTA, #NS.db.historia,
+    paikka and (HIMMEA .. paikka .. "|r") or ""))
 
   local sisalto = kehys.vieritys.sisalto
   tyhjenna(sisalto)
