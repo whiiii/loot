@@ -22,6 +22,59 @@ local function varilla(laatu, teksti)
   return (LAATUVARI[laatu or 1] or "|cffffffff") .. (teksti or "?") .. "|r"
 end
 
+--- Pelaajan nimi luokan varissa.
+---
+--- Luokkavari on nopein tapa erottaa nimet toisistaan: raidissa on 40
+--- nimea, ja pelkka valkoinen lista vaatii lukemista jokaisen kohdalla.
+local function pelaajanVari(tiedosto)
+  local c = tiedosto and RAID_CLASS_COLORS and RAID_CLASS_COLORS[tiedosto]
+  if not c then return "|cffffffff" end
+  return ("|cff%02x%02x%02x"):format(c.r * 255, c.g * 255, c.b * 255)
+end
+
+--- Itemin kuvake. Pelin oma tietokanta tuntee sen vaikka itemia ei olisi
+--- nahty: numero riittaa.
+local function ikoni(item)
+  if item.ikoni then return item.ikoni end
+  if item.itemId and GetItemIcon then return GetItemIcon(item.itemId) end
+  return nil
+end
+
+--- Kuvakeruutu laatureunuksella.
+local function teeIkoni(vanhempi, koko, item)
+  local kehys = CreateFrame("Frame", nil, vanhempi)
+  kehys:SetSize(koko, koko)
+
+  local kuva = kehys:CreateTexture(nil, "ARTWORK")
+  kuva:SetAllPoints()
+  kuva:SetTexture(ikoni(item) or "Interface\\Icons\\INV_Misc_QuestionMark")
+  -- Reunat pois: pelin kuvakkeissa on tyhjaa reunaa, joka tekee listasta
+  -- levottoman nakoisen.
+  kuva:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+
+  local reunus = kehys:CreateTexture(nil, "OVERLAY")
+  reunus:SetAllPoints()
+  reunus:SetColorTexture(0, 0, 0, 0)
+
+  local vari = LAATUVARI[item.laatu or 1]
+  if vari then
+    local r = tonumber(vari:sub(5, 6), 16) / 255
+    local g = tonumber(vari:sub(7, 8), 16) / 255
+    local b = tonumber(vari:sub(9, 10), 16) / 255
+    kehys.reuna = CreateFrame("Frame", nil, kehys, "BackdropTemplate")
+    kehys.reuna:SetPoint("TOPLEFT", -1, 1)
+    kehys.reuna:SetPoint("BOTTOMRIGHT", 1, -1)
+    if kehys.reuna.SetBackdrop then
+      kehys.reuna:SetBackdrop({
+        edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1,
+      })
+      kehys.reuna:SetBackdropBorderColor(r, g, b, 1)
+    end
+  end
+
+  return kehys
+end
+
 local paa          -- paaikkuna
 local nakymat = {} -- [avain] = kehys
 local navNapit = {}
@@ -159,7 +212,7 @@ end
 
 local function luoPaa()
   paa = CreateFrame("Frame", "LootPrioPaa", UIParent, "BasicFrameTemplateWithInset")
-  paa:SetSize(560, 440)
+  paa:SetSize(660, 500)
   paa:SetPoint("CENTER")
   paa:SetMovable(true)
   paa:EnableMouse(true)
@@ -243,10 +296,10 @@ local function piirraLoot()
     kehys.valilehdet = CreateFrame("Frame", nil, kehys)
     kehys.valilehdet:SetPoint("TOPLEFT", 0, 0)
     kehys.valilehdet:SetPoint("TOPRIGHT", 0, 0)
-    kehys.valilehdet:SetHeight(26)
+    kehys.valilehdet:SetHeight(36)
 
     kehys.vieritys = teeVieritys(kehys, "LootPrioLootScroll")
-    kehys.vieritys:SetPoint("TOPLEFT", 0, -30)
+    kehys.vieritys:SetPoint("TOPLEFT", 0, -42)
     kehys.vieritys:SetPoint("BOTTOMRIGHT", -26, 28)
 
     kehys.napit = CreateFrame("Frame", nil, kehys)
@@ -269,6 +322,13 @@ local function piirraLoot()
       NS.PeruJako()
     end)
     kehys.peru:SetPoint("BOTTOMLEFT", 248, 0)
+
+    -- Lootmaster voi pudota linjoilta kesken jaon. Ilman tata koko raidi
+    -- jaisi odottamaan hanen paluutaan.
+    kehys.haltuun = nappi(kehys.napit, 150, 22, "Ota jako haltuun", function()
+      NS.OtaHaltuun()
+    end)
+    kehys.haltuun:SetPoint("BOTTOMLEFT", 352, 0)
 
     -- Kulunut aika oikeaan reunaan. Mikaan ei pakota lopettamaan, mutta
     -- jostain on nahtava milloin odottaminen ei enaa tuota vastauksia.
@@ -305,9 +365,18 @@ local function piirraLoot()
   local sessio = NS.sessio
   local officer = NS.OnOfficer()
 
-  kehys.lopeta:SetShown(sessio ~= nil and officer)
-  kehys.sulje:SetShown(sessio ~= nil and officer and not sessio.suljettu)
-  kehys.peru:SetShown(sessio ~= nil and officer and sessio.viimeisin ~= nil)
+  -- Jakonapit vain sille joka jakaa. Officerin napit nakyivat aiemmin
+  -- kaikille apulaisille, jolloin kaksi officeria saattoi painaa samaa
+  -- itemia eri suuntiin.
+  local jakaja = sessio ~= nil and sessio.lootmaster == NS.OmaNimi()
+
+  kehys.lopeta:SetShown(jakaja)
+  kehys.sulje:SetShown(jakaja and not sessio.suljettu)
+  kehys.peru:SetShown(jakaja and sessio.viimeisin ~= nil)
+
+  -- Haltuunotto vain johtajalle ja vain jos joku muu jakaa.
+  kehys.haltuun:SetShown(
+    sessio ~= nil and not jakaja and NS.OnJohtaja() and not sessio.testi)
 
   if not sessio then
     local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
@@ -315,18 +384,19 @@ local function piirraLoot()
     rivi:SetPoint("TOPRIGHT", 0, -4)
     rivi:SetHeight(90)
 
-    if NS.OnOfficer() then
+    if officer then
       teksti(rivi, "GameFontDisableSmall", 4, 0,
-        "Ei jakoa käynnissä.\n\nKerää lootit laukkuihisi ja paina Jaa lootit.")
+        "Ei jakoa käynnissä.\n\nKerää lootit laukkuihisi ja paina Jaa lootit.\n"
+        .. "Jaon avaaja on sen illan lootmaster.")
 
       local b = nappi(rivi, 130, 24, "Jaa lootit", function()
         NS.AvaaValinta()
       end)
-      b:SetPoint("TOPLEFT", 4, -46)
+      b:SetPoint("TOPLEFT", 4, -56)
     else
       teksti(rivi, "GameFontDisableSmall", 4, 0,
-        "Ei jakoa käynnissä.\n\nIkkuna aukeaa itsestään kun officer\n"
-        .. "laittaa lootit jakoon.")
+        "Ei jakoa käynnissä.\n\nVastausikkuna aukeaa itsestään kun\n"
+        .. "lootmaster laittaa lootit jakoon.")
     end
 
     sisalto:SetHeight(96)
@@ -353,21 +423,52 @@ local function piirraLoot()
     sessio.valittu = avoimet[1].indeksi
   end
 
+  -- Valilehdet kuvakkeina eika nimina. Kuusi itemia ei mahdu nimina
+  -- riville ilman etta nimet katkaistaan kolmeentoista merkkiin, ja
+  -- katkaistu nimi on huonompi tunnistettava kuin kuvake.
   local x = 0
   for _, item in ipairs(avoimet) do
-    local nimi = itemNimi(item)
-    local lyhyt = nimi:len() > 14 and (nimi:sub(1, 13) .. "…") or nimi
+    local nimi, laatu = itemNimi(item)
 
-    local b = nappi(kehys.valilehdet, 98, 22, lyhyt, function()
+    local b = CreateFrame("Button", nil, kehys.valilehdet)
+    b:SetSize(34, 34)
+    b:SetPoint("TOPLEFT", x, 0)
+
+    local kuva = b:CreateTexture(nil, "ARTWORK")
+    kuva:SetAllPoints()
+    kuva:SetTexture(ikoni(item) or "Interface\\Icons\\INV_Misc_QuestionMark")
+    kuva:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+
+    -- Valittu erottuu kirkkaana, muut himmennettyina. Pelkka reunus ei
+    -- erotu tarpeeksi kun kuvakkeet ovat vierekkain.
+    if sessio.valittu == item.indeksi then
+      local kehystys = b:CreateTexture(nil, "OVERLAY")
+      kehystys:SetPoint("TOPLEFT", -2, 2)
+      kehystys:SetPoint("BOTTOMRIGHT", 2, -2)
+      kehystys:SetColorTexture(0.79, 0.64, 0.15, 0.85)
+      kehystys:SetDrawLayer("BACKGROUND")
+    else
+      kuva:SetVertexColor(0.45, 0.45, 0.45)
+    end
+
+    -- Vastaamattomien maara kuvakkeen kulmaan: siita nakee yhdella
+    -- silmayksella mika item odottaa viela vastauksia.
+    local vastanneet = 0
+    for _ in pairs(item.vastaukset) do vastanneet = vastanneet + 1 end
+
+    local luku = b:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+    luku:SetPoint("BOTTOMRIGHT", -1, 1)
+    luku:SetText(vastanneet > 0 and tostring(vastanneet) or "")
+
+    b:SetScript("OnClick", function()
       sessio.valittu = item.indeksi
       NS.PaivitaNakyma("loot")
     end)
-    b:SetPoint("TOPLEFT", x, 0)
-    if sessio.valittu == item.indeksi then b:LockHighlight() end
+
     itemTooltip(b, item.linkki, item.itemId)
     lisaaLapsi(kehys.valilehdet, b)
 
-    x = x + 100
+    x = x + 38
   end
 
   local item = sessio.itemit[sessio.valittu]
@@ -376,17 +477,28 @@ local function piirraLoot()
   local nimi, laatu = itemNimi(item)
   local y = -4
 
+  -- Otsikkorivi: kuvake, nimi ja kuka jakaa. Lootmasterin nimi on tassa
+  -- siksi, etta jokaisen pitaa nahda kenen paatosta odotetaan.
   local otsikko = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
   otsikko:SetPoint("TOPLEFT", 0, y)
   otsikko:SetPoint("TOPRIGHT", 0, y)
-  otsikko:SetHeight(20)
-  teksti(otsikko, "GameFontNormal", 4, 0,
+  otsikko:SetHeight(38)
+
+  local kuvake = teeIkoni(otsikko, 32, item)
+  kuvake:SetPoint("TOPLEFT", 4, -2)
+  itemTooltip(kuvake, item.linkki, item.itemId)
+
+  teksti(otsikko, "GameFontNormal", 42, -2,
     varilla(laatu, nimi)
     .. (item.jaettu and ("  " .. OK .. "→ " .. (item.saaja or "?") .. "|r") or ""))
 
-  nimiAlue(otsikko, nimi, item.itemId, item.linkki, "GameFontNormal")
+  local lm = sessio.lootmaster or "?"
+  teksti(otsikko, "GameFontDisableSmall", 42, -20,
+    ("jakaa: %s%s|r%s"):format(
+      NS.Paikalla(lm) and HIMMEA or VIRHE, lm,
+      NS.Paikalla(lm) and "" or (VIRHE .. " (poissa)|r")))
 
-  y = y - 24
+  y = y - 42
 
   -- Omat vastausnapit, jos itemia ei ole viela jaettu.
   if not item.jaettu then
@@ -491,16 +603,28 @@ local function piirraLoot()
 
     y = y - 18
 
+    local luokat = NS.RaidinLuokat()
+    local pariton = false
+
     for _, v in ipairs(vastaukset) do
       local vast = NS.VASTAUS[v.koodi]
 
       local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
       rivi:SetPoint("TOPLEFT", 0, y)
       rivi:SetPoint("TOPRIGHT", 0, y)
-      rivi:SetHeight(18)
+      rivi:SetHeight(20)
 
-      teksti(rivi, "GameFontHighlightSmall", 8, 0, vast.vari .. vast.nimi .. "|r")
-      teksti(rivi, "GameFontHighlightSmall", 92, 0,
+      -- Joka toinen rivi tummempi. Nelikymmenen nimen listassa silma
+      -- hukkaa rivin ilman sita.
+      pariton = not pariton
+      if pariton then
+        local tausta = rivi:CreateTexture(nil, "BACKGROUND")
+        tausta:SetAllPoints()
+        tausta:SetColorTexture(1, 1, 1, 0.03)
+      end
+
+      teksti(rivi, "GameFontHighlightSmall", 8, -3, vast.vari .. vast.nimi .. "|r")
+      teksti(rivi, "GameFontHighlightSmall", 92, -3,
         KULTA .. (v.luku and tostring(v.luku) or "—") .. "|r")
 
       -- Vaarin perusteltu prio merkitaan. Tarkistus tehdaan jokaisella
@@ -509,21 +633,23 @@ local function piirraLoot()
       if v.koodi == "prio" and not v.prioOk then
         huomio = VIRHE .. " (!)|r"
       end
-      teksti(rivi, "GameFontHighlightSmall", 130, 0, v.nimi .. huomio)
+
+      teksti(rivi, "GameFontHighlightSmall", 130, -3,
+        pelaajanVari(luokat[v.nimi]) .. v.nimi .. "|r" .. huomio)
 
       -- Montako itemia pelaaja on jo saanut. Lootmasterin tarkein luku
       -- heti perusteen jalkeen.
-      teksti(rivi, "GameFontHighlightSmall", 250, 0,
+      teksti(rivi, "GameFontHighlightSmall", 250, -3,
         (v.saatu > 0 and KULTA or HIMMEA) .. tostring(v.saatu) .. "|r")
 
-      if NS.OnOfficer() and not item.jaettu and v.koodi ~= "pass" then
-        local b = nappi(rivi, 70, 18, "Assign", function()
+      if jakaja and not item.jaettu and v.koodi ~= "pass" then
+        local b = nappi(rivi, 70, 18, "Anna", function()
           NS.Jaa(item, v.nimi)
         end)
-        b:SetPoint("TOPRIGHT", -8, 0)
+        b:SetPoint("TOPRIGHT", -8, -1)
       end
 
-      y = y - 18
+      y = y - 20
     end
   end
 
@@ -1329,6 +1455,142 @@ laukkuTarkkailija:SetScript("OnEvent", function()
 end)
 
 --------------------------------------------------------------------------
+-- Äänestysikkuna
+--------------------------------------------------------------------------
+
+--- Raidaajan oma ikkuna: yksi item kerrallaan ja viisi nappia.
+---
+--- Erillaan paaikkunasta siksi, etta raidaajan koko tehtava on painaa yhta
+--- nappia. Paaikkunan valikot, listat ja lajittelut ovat lootmasterin
+--- tyokaluja, ja bossin jalkeen niiden selaaminen on vain hidaste.
+---
+--- Ikkuna nayttaa aina vanhimman itemin johon tama pelaaja ei ole
+--- vastannut, ja sulkeutuu itsestaan kun vastattavaa ei ole.
+local aanestys
+
+local function aanestysItem()
+  local s = NS.sessio
+  if not s or s.suljettu then return nil end
+
+  for _, item in ipairs(NS.AvoimetItemit()) do
+    if not s.omaVastaus[item.indeksi] then return item end
+  end
+  return nil
+end
+
+function NS.PaivitaAanestys()
+  if not aanestys or not aanestys:IsShown() then return end
+
+  local item = aanestysItem()
+  if not item then
+    aanestys:Hide()
+    return
+  end
+
+  local nimi, laatu = itemNimi(item)
+
+  aanestys.kuva:SetTexture(ikoni(item) or "Interface\\Icons\\INV_Misc_QuestionMark")
+  aanestys.nimi:SetText(varilla(laatu, nimi))
+  aanestys.linkki = item.linkki
+  aanestys.itemId = item.itemId
+  aanestys.indeksi = item.indeksi
+
+  -- Montako on viela edessa. Ilman tata pelaaja ei tieda onko tama
+  -- viimeinen nappi vai viides kuudesta.
+  local jaljella = 0
+  for _, i in ipairs(NS.AvoimetItemit()) do
+    if not NS.sessio.omaVastaus[i.indeksi] then jaljella = jaljella + 1 end
+  end
+
+  aanestys.tila:SetText(jaljella > 1
+    and (HIMMEA .. jaljella .. " itemiä vastaamatta|r")
+    or (HIMMEA .. "viimeinen item|r"))
+
+  local omaPrio = NS.OmassaProfiilissa(item.itemId)
+  for koodi, b in pairs(aanestys.napit) do
+    b:SetEnabled(koodi ~= "prio" or omaPrio)
+  end
+
+  aanestys.selite:SetText(omaPrio
+    and (KULTA .. "Tämä item on profiilissasi.|r")
+    or (HIMMEA .. "Ei profiilissasi — LootPrio ei käytössä.|r"))
+end
+
+function NS.AvaaAanestys()
+  if not aanestysItem() then return end
+
+  if not aanestys then
+    aanestys = CreateFrame("Frame", "LootPrioAanestys", UIParent,
+      "BasicFrameTemplateWithInset")
+    aanestys:SetSize(400, 170)
+    aanestys:SetPoint("CENTER", 0, 160)
+    aanestys:SetMovable(true)
+    aanestys:EnableMouse(true)
+    aanestys:RegisterForDrag("LeftButton")
+    aanestys:SetScript("OnDragStart", aanestys.StartMoving)
+    aanestys:SetScript("OnDragStop", aanestys.StopMovingOrSizing)
+    aanestys:SetClampedToScreen(true)
+    aanestys:SetFrameStrata("HIGH")
+    aanestys.TitleText:SetText("LootPrio — vastaa")
+    tinsert(UISpecialFrames, "LootPrioAanestys")
+
+    local ruutu = CreateFrame("Frame", nil, aanestys)
+    ruutu:SetSize(44, 44)
+    ruutu:SetPoint("TOPLEFT", 16, -34)
+
+    aanestys.kuva = ruutu:CreateTexture(nil, "ARTWORK")
+    aanestys.kuva:SetAllPoints()
+    aanestys.kuva:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+
+    ruutu:EnableMouse(true)
+    ruutu:SetScript("OnEnter", function(self)
+      if not aanestys.linkki and not aanestys.itemId then return end
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:SetHyperlink(aanestys.linkki or ("item:" .. aanestys.itemId))
+      GameTooltip:Show()
+    end)
+    ruutu:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    aanestys.nimi = aanestys:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+    aanestys.nimi:SetPoint("TOPLEFT", 70, -38)
+    aanestys.nimi:SetPoint("TOPRIGHT", -16, -38)
+    aanestys.nimi:SetJustifyH("LEFT")
+
+    aanestys.tila = aanestys:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    aanestys.tila:SetPoint("TOPLEFT", 70, -60)
+
+    aanestys.selite = aanestys:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    aanestys.selite:SetPoint("TOPLEFT", 16, -86)
+    aanestys.selite:SetPoint("TOPRIGHT", -16, -86)
+    aanestys.selite:SetJustifyH("LEFT")
+
+    -- Napit isoina ja yhdella rivilla: ne painetaan kesken taistelun
+    -- jalkipyykin, eika pieni nappi osu.
+    aanestys.napit = {}
+    local x = 14
+    for _, v in ipairs(NS.VASTAUKSET) do
+      local leveys = (v.koodi == "pass") and 56 or 76
+
+      local b = nappi(aanestys, leveys, 28, v.nimi, function()
+        if aanestys.indeksi then NS.Vastaa(aanestys.indeksi, v.koodi) end
+        NS.PaivitaAanestys()
+      end)
+      b:SetPoint("BOTTOMLEFT", x, 14)
+
+      aanestys.napit[v.koodi] = b
+      x = x + leveys + 4
+    end
+  end
+
+  aanestys:Show()
+  NS.PaivitaAanestys()
+end
+
+function NS.SuljeAanestys()
+  if aanestys then aanestys:Hide() end
+end
+
+--------------------------------------------------------------------------
 -- Minimap-nappi
 --------------------------------------------------------------------------
 
@@ -1376,7 +1638,15 @@ function NS.LuoMinimapNappi()
   end)
   b:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
 
-  b:SetScript("OnClick", function()
+  b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+  b:SetScript("OnClick", function(_, nappi)
+    -- Oikea klikkaus avaa vastausikkunan uudelleen, jos sen sulki vahingossa
+    -- kesken jaon. Ilman tata vastaamatta jaanyt item olisi menetetty.
+    if nappi == "RightButton" then
+      NS.AvaaAanestys()
+      return
+    end
+
     if paa and paa:IsShown() then paa:Hide() else NS.Avaa() end
   end)
 
@@ -1384,6 +1654,14 @@ function NS.LuoMinimapNappi()
     GameTooltip:SetOwner(self, "ANCHOR_LEFT")
     GameTooltip:AddLine("LootPrio")
     GameTooltip:AddLine("Vasen klikkaus: avaa ikkuna", 1, 1, 1)
+    GameTooltip:AddLine("Oikea klikkaus: avaa vastausikkuna", 1, 1, 1)
+
+    if NS.sessio then
+      GameTooltip:AddLine(" ")
+      GameTooltip:AddLine("Jako käynnissä — jakaa "
+        .. (NS.sessio.lootmaster or "?"), .79, .64, .15)
+    end
+
     GameTooltip:AddLine("Raahaa: siirrä nappia", .6, .6, .6)
     GameTooltip:Show()
   end)

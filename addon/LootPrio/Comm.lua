@@ -90,6 +90,12 @@ function NS.Comm.Kasittele(tyyppi, sisalto, lahettaja)
       NS.PeruJako(tonumber(indeksi), lahettaja)
     end
 
+  elseif tyyppi == "HALTUUN" then
+    -- Vain raidin johtaja voi ottaa jaon haltuunsa. Tarkistus tehdaan
+    -- jokaisella koneella raidin arvosta, ei viestin sisallosta.
+    if not NS.OnJohtaja(lahettaja) then return end
+    NS.JakoSiirtyi(sisalto:match("^(%S+)"), lahettaja)
+
   elseif tyyppi == "LOPPU" then
     if not NS.OnOfficer(lahettaja) then return end
     NS.SessioPaattyi(sisalto:match("^(%S+)"))

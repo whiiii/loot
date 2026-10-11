@@ -58,10 +58,68 @@ function NS.NaytaKaikkiVastaukset()
   return NS.OnOfficer()
 end
 
+--- Onko jako kaynnissa ja jollakin toisella.
+---
+--- Lootmaster on se joka avasi jaon. Mitaan erillista asetusta ei ole,
+--- koska se olisi yksi asia lisaa jonka voi unohtaa paivittaa - ja se
+--- paattyisi riitaan siita kenen nimi siella lukee. Avaaminen on teko, ja
+--- teko riittaa.
+function NS.JakoVarattu()
+  local s = NS.sessio
+  if not s or s.testi then return nil end
+  if s.lootmaster == NS.OmaNimi() then return nil end
+
+  -- Jaettu jako ei varaa mitaan: jaljella ei ole paatettavaa.
+  if #NS.AvoimetItemit() == 0 then return nil end
+
+  return s.lootmaster
+end
+
+--- Ottaa kesken jaaneen jaon haltuun.
+---
+--- Vain raidin johtaja. Lootmaster voi pudota linjoilta kesken jaon, ja
+--- ilman tata koko raidi jaisi odottamaan hanen paluutaan. Apulaisille
+--- tata ei anneta: kaksi apulaista voisi ottaa jaon vuorotellen toisiltaan.
+function NS.OtaHaltuun()
+  local s = NS.sessio
+  if not s then return false end
+
+  if not NS.OnJohtaja() then
+    NS.Tulosta("vain raidin johtaja voi ottaa jaon haltuunsa.")
+    return false
+  end
+
+  if s.lootmaster == NS.OmaNimi() then return false end
+
+  local vanha = s.lootmaster
+  s.lootmaster = NS.OmaNimi()
+  NS.Comm.Laheta("HALTUUN", s.id)
+  NS.Tulosta(("jako otettu haltuun: %s -> sina."):format(vanha or "?"))
+
+  if NS.PaivitaNakyma then NS.PaivitaNakyma("loot") end
+  return true
+end
+
+function NS.JakoSiirtyi(sessioId, uusi)
+  local s = NS.sessio
+  if not s or s.id ~= sessioId then return end
+
+  s.lootmaster = uusi
+  if NS.PaivitaNakyma then NS.PaivitaNakyma("loot") end
+end
+
 --- Lootmaster avaa session valituista itemeista.
 function NS.AvaaSessio(valitut, testi)
   if #valitut == 0 then
     NS.Tulosta("ei valittuja itemeita.")
+    return false
+  end
+
+  -- Kaksi samanaikaista jakoa tarkoittaisi kahta eri vastauslistaa samoille
+  -- ihmisille, ja jalkimmainen pyyhkisi ensimmaisen.
+  local varaaja = not testi and NS.JakoVarattu()
+  if varaaja then
+    NS.Tulosta(("%s on jo jakamassa. Odota etta jako paattyy."):format(varaaja))
     return false
   end
 
@@ -86,7 +144,11 @@ function NS.AvaaSessio(valitut, testi)
   NS.sessio.valittu = 1
 
   if not testi then NS.LahetaSessio() end
+
+  -- Jakajalle koko nakyma, ja aanestysikkuna sen rinnalle: lootmaster
+  -- vastaa itsekin.
   NS.Avaa("loot")
+  if NS.AvaaAanestys then NS.AvaaAanestys() end
   return true
 end
 
@@ -144,7 +206,11 @@ function NS.SaapuvaSessio(sessioId, nakyvyys, itemit, lahettaja)
     end
   end
 
-  NS.Avaa("loot")
+  -- Raidaajalle vain aanestysikkuna. Paaikkuna on lootmasterin tyokalu:
+  -- sen valikot ja listat ovat bossin jalkeen pelkka hidaste sille jonka
+  -- koko tehtava on painaa yhta nappia. Paaikkunan saa auki napista.
+  if NS.AvaaAanestys then NS.AvaaAanestys() end
+  if NS.PaivitaNakyma then NS.PaivitaNakyma("loot") end
 end
 
 --- Sulkee vastaukset. Itemit jaavat jaettaviksi, mutta uusia vastauksia
@@ -157,6 +223,7 @@ function NS.SuljeVastaukset()
   s.suljettu = true
   if not s.testi then NS.Comm.Laheta("SULJE", s.id) end
 
+  if NS.SuljeAanestys then NS.SuljeAanestys() end
   if NS.PaivitaNakyma then NS.PaivitaNakyma("loot") end
   return true
 end
@@ -166,6 +233,10 @@ function NS.VastauksetSuljettu(sessioId)
   if not s or s.id ~= sessioId then return end
 
   s.suljettu = true
+
+  -- Aanestysikkuna pois: nappi joka ei tee mitaan on huonompi kuin ei
+  -- nappia lainkaan.
+  if NS.SuljeAanestys then NS.SuljeAanestys() end
   if NS.PaivitaNakyma then NS.PaivitaNakyma("loot") end
 end
 
@@ -231,12 +302,16 @@ function NS.PaataSessio(yhteenveto)
 
   NS.Comm.Laheta("LOPPU", NS.sessio.id)
   NS.sessio = nil
+
+  if NS.SuljeAanestys then NS.SuljeAanestys() end
   if NS.PaivitaNakyma then NS.PaivitaNakyma("loot") end
 end
 
 function NS.SessioPaattyi(sessioId)
   if NS.sessio and NS.sessio.id == sessioId then
     NS.sessio = nil
+
+    if NS.SuljeAanestys then NS.SuljeAanestys() end
     if NS.PaivitaNakyma then NS.PaivitaNakyma("loot") end
   end
 end
@@ -428,6 +503,8 @@ function NS.KirjaaJako(sessioId, indeksi, saaja, koodi, luku)
     s.valittu = avoimet[1] and avoimet[1].indeksi or nil
   end
 
+  -- Jaettu item katoaa myos aanestysikkunasta: siihen ei enaa vastata.
+  if NS.PaivitaAanestys then NS.PaivitaAanestys() end
   if NS.PaivitaNakyma then NS.PaivitaNakyma("loot") end
 end
 

@@ -9,7 +9,7 @@
 local ADDON, NS = ...
 
 NS.NIMI = ADDON
-NS.VERSIO = "0.7"
+NS.VERSIO = "0.8"
 NS.VARI = "|cffc9a227"   -- sama kulta kuin sivustolla
 NS.LOPPU = "|r"
 
@@ -138,6 +138,57 @@ function NS.OnOfficer(nimi)
     end
   end
   return false
+end
+
+--- Onko pelaaja raidin johtaja.
+---
+--- Eri asia kuin officer: apulaisia voi olla monta, johtaja on yksi. Vain
+--- johtaja voi ottaa kesken jaaneen jaon haltuunsa, koska muuten kaksi
+--- apulaista voisi riidella siita kumpi jakaa.
+function NS.OnJohtaja(nimi)
+  nimi = nimi or NS.OmaNimi()
+
+  if not IsInRaid() then
+    return UnitIsGroupLeader("player") and nimi == NS.OmaNimi()
+  end
+
+  for i = 1, GetNumGroupMembers() do
+    local rNimi, rank = GetRaidRosterInfo(i)
+    if rNimi and NS.Nimi(rNimi) == nimi then
+      return (rank or 0) >= 2
+    end
+  end
+  return false
+end
+
+--- Onko nimetty pelaaja paikalla ja yhteydessa.
+function NS.Paikalla(nimi)
+  if not nimi then return false end
+  return NS.RaidinJasenet()[nimi] == true
+end
+
+--- Raidissa olevien luokat: [profiilinimi] = "WARRIOR".
+---
+--- Luokkavari on nopein tapa erottaa nimet toisistaan listassa, eika sita
+--- varten kannata kysya sivustolta mitaan - peli tietaa sen jo.
+function NS.RaidinLuokat()
+  local luokat = {}
+
+  if IsInRaid() then
+    for i = 1, GetNumGroupMembers() do
+      local nimi, _, _, _, _, tiedosto = GetRaidRosterInfo(i)
+      if nimi then luokat[NS.Nimi(nimi)] = tiedosto end
+    end
+  else
+    luokat[NS.OmaNimi()] = select(2, UnitClass("player"))
+    for i = 1, GetNumSubgroupMembers() do
+      local yksikko = "party" .. i
+      local nimi = UnitName(yksikko)
+      if nimi then luokat[NS.Nimi(nimi)] = select(2, UnitClass(yksikko)) end
+    end
+  end
+
+  return luokat
 end
 
 --- Onko pelaaja master looter.
