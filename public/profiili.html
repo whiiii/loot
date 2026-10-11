@@ -17,13 +17,20 @@
 <body class="sivu">
 
 <header class="palkki">
-  <div></div>
-  <div class="palkki-oikea">
-    <span class="himmea" id="raidi"></span>
-    <a class="pieni linkkinappi" id="yllapitolinkki" href="/yllapito" hidden>Ylläpito</a>
+  <!-- Sivun oma toiminto vasemmalle. Valikon oikealla puolella se
+       siirtäisi valikon nappeja paikaltaan sivulta toiselle. -->
+  <div class="palkki-vasen">
     <button class="pieni" id="tallenna">Tallenna</button>
-    <button class="pieni" id="ulos">Kirjaudu ulos</button>
+    <span class="himmea" id="raidi"></span>
   </div>
+  <nav class="palkki-oikea valikko">
+    <a class="pieni linkkinappi" data-officer href="/yllapito" hidden>Ylläpito</a>
+    <a class="pieni linkkinappi" data-officer href="/siirto" hidden>Siirto</a>
+    <a class="pieni linkkinappi" data-officer href="/historia" hidden>Tuontihistoria</a>
+    <a class="pieni linkkinappi" data-officer href="/loki" hidden>Loki</a>
+    <a class="pieni linkkinappi" href="/profiili">Oma profiili</a>
+    <button class="pieni" id="ulos">Kirjaudu ulos</button>
+  </nav>
 </header>
 
 <div id="lukkoilmoitus" class="ilmoitus" hidden>
@@ -69,6 +76,7 @@
 <div class="viesti" id="viesti"></div>
 
 <script src="/staattinen/hahmotiedot.js"></script>
+<script src="/staattinen/navi.js"></script>
 <script src="/staattinen/dialogi.js"></script>
 <script src="/staattinen/hahmo.js"></script>
 </body>

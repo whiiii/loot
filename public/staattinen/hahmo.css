@@ -2,6 +2,8 @@
 
 body.sivu { display: block; }
 
+/* Palkki pysyy ylareunassa myos vieritettaessa: valikkoa ei tarvitse
+   etsia rullaamalla takaisin ylos. */
 .palkki {
   display: flex;
   align-items: center;
@@ -10,9 +12,29 @@ body.sivu { display: block; }
   padding: .85rem 1.25rem;
   border-bottom: 1px solid var(--reuna);
   background: var(--paneeli);
+  position: sticky;
+  top: 0;
+  z-index: 20;
 }
 
 .palkki-oikea { display: flex; align-items: center; gap: .85rem; }
+
+/* Valikko: samat linkit samassa jarjestyksessa joka sivulla. Siirtyva
+   valikko pakottaa etsimaan napin uudelleen jokaisella sivulla. */
+.valikko { gap: .5rem; }
+
+/* Nykyinen sivu. Vari erottaa sen muuttamatta napin kokoa - lihavointi
+   tai paksumpi reunus siirtaisi viereisia nappeja. */
+a.linkkinappi.nyt {
+  border-color: var(--kulta-tumma);
+  background: rgba(201, 162, 39, .1);
+  color: var(--kulta);
+}
+a.linkkinappi.nyt:hover { background: rgba(201, 162, 39, .16); }
+
+/* Sivun oma toiminto, esim. profiilin Tallenna. Vasemmassa laidassa,
+   jottei se tyonna valikon nappeja paikaltaan sivulta toiselle. */
+.palkki-vasen { display: flex; align-items: center; gap: .85rem; }
 
 .himmea { color: var(--himmea); font-size: .85rem; }
 

@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="fi">
 <head>
 <meta charset="utf-8">
@@ -22,13 +22,14 @@
     <strong>Ylläpito</strong>
     <span class="himmea" id="raidi"></span>
   </div>
-  <div class="palkki-oikea">
-    <a class="pieni linkkinappi" href="/siirto">Siirto</a>
-    <a class="pieni linkkinappi" href="/historia">Tuontihistoria</a>
-    <a class="pieni linkkinappi" href="/loki">Loki</a>
+  <nav class="palkki-oikea valikko">
+    <a class="pieni linkkinappi" data-officer href="/yllapito">Ylläpito</a>
+    <a class="pieni linkkinappi" data-officer href="/siirto">Siirto</a>
+    <a class="pieni linkkinappi" data-officer href="/historia">Tuontihistoria</a>
+    <a class="pieni linkkinappi" data-officer href="/loki">Loki</a>
     <a class="pieni linkkinappi" href="/profiili">Oma profiili</a>
     <button class="pieni" id="ulos">Kirjaudu ulos</button>
-  </div>
+  </nav>
 </header>
 
 <main class="yllapito">
@@ -119,6 +120,7 @@
 <div class="viesti" id="viesti"></div>
 
 <script src="/staattinen/hahmotiedot.js"></script>
+<script src="/staattinen/navi.js"></script>
 <script src="/staattinen/dialogi.js"></script>
 <script src="/staattinen/yllapito.js"></script>
 </body>

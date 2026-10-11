@@ -67,13 +67,14 @@ async function lataa() {
       $("katseltava").textContent = hahmonNimi(u);
       $("lukkoilmoitus").hidden = true;
       $("tallenna").hidden = true;
-      $("yllapitolinkki").hidden = false;
+      // Tanne paastiin vain officerina: katselu vaatii officer-oikeudet.
+      naytaOfficerValikko();
     } else {
       // Lukko ei rajoita officeria, joten hanelle se ei ole "lukittu" tila
       // vaan pelkka merkinta.
       tila.lukittu = !!mina.user.locked && mina.user.role !== "officer";
       $("lukkoilmoitus").hidden = !tila.lukittu;
-      $("yllapitolinkki").hidden = mina.user.role !== "officer";
+      if (mina.user.role === "officer") naytaOfficerValikko();
       $("tallenna").hidden = tila.lukittu;
     }
 
