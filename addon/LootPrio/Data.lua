@@ -1,259 +1,266 @@
 --[[
-  LootPrio — profiilien tuonti ja haku.
+  LootPrio — importing and querying profiles.
 
-  Muoto tulee sivustolta sellaisenaan:
+  The format comes from the website as-is:
 
     LOOTPRIO1
     RAID=Molten Core
     TIME=2026-10-10 07:05:32
     SLOTS=head,neck,shoulder,...
     P=Betonimylly|head:18817,neck:18814,...
+    S=Betonimylly|4
+    A=Betonimylly|Beto Nimylly,Betonimylly99
+    O=Pulu,Homo
 
-  Rivipohjainen muoto on tassa JSONia parempi siita yksinkertaisesta
-  syysta, etta Luassa sen lukee kolmella gmatch-kutsulla. JSON vaatisi
-  oman jasentimen tai kirjaston, eika se toisi mitaan lisaa.
+  A line-based format beats JSON here for one simple reason: Lua reads it
+  with three gmatch calls. JSON would need a parser or a library, and it
+  would add nothing.
 ]]
 
 local ADDON, NS = ...
 
---- Jasentaa viennin. Palauttaa taulukon tai nil ja virheen.
-function NS.Jasenna(teksti)
-  if type(teksti) ~= "string" or teksti == "" then
+--- Parses the export. Returns a table, or nil and an error.
+function NS.Parse(text)
+  if type(text) ~= "string" or text == "" then
     return nil, "Teksti puuttuu."
   end
 
-  -- Windowsin rivinvaihdot pois, jotta vertailut osuvat.
-  teksti = teksti:gsub("\r", "")
+  -- Strip Windows line endings so comparisons match.
+  text = text:gsub("\r", "")
 
-  local eka = teksti:match("^%s*(%S+)")
-  if eka ~= "LOOTPRIO1" then
+  local first = text:match("^%s*(%S+)")
+  if first ~= "LOOTPRIO1" then
     return nil, "Tuntematon muoto. Odotettiin LOOTPRIO1."
   end
 
-  local tulos = {
-    raidinNimi = teksti:match("\nRAID=([^\n]*)") or "?",
-    aika = teksti:match("\nTIME=([^\n]*)") or "?",
-    profiilit = {},
-    saadut = {},
-    aliakset = {},
-    officerit = {},
-    hahmoja = 0,
+  local result = {
+    raidName = text:match("\nRAID=([^\n]*)") or "?",
+    time = text:match("\nTIME=([^\n]*)") or "?",
+    profiles = {},
+    received = {},
+    aliases = {},
+    officers = {},
+    characterCount = 0,
   }
 
-  for rivi in teksti:gmatch("P=([^\n]+)") do
-    local hahmo, valinnat = rivi:match("^([^|]+)|(.*)$")
+  for line in text:gmatch("P=([^\n]+)") do
+    local character, picks = line:match("^([^|]+)|(.*)$")
 
-    if hahmo and hahmo ~= "" then
-      hahmo = hahmo:match("^%s*(.-)%s*$")
-      local omat = {}
+    if character and character ~= "" then
+      character = character:match("^%s*(.-)%s*$")
+      local own = {}
 
-      for paikka, itemId in (valinnat or ""):gmatch("([%w_]+):(%d+)") do
-        omat[paikka] = tonumber(itemId)
+      for slot, itemId in (picks or ""):gmatch("([%w_]+):(%d+)") do
+        own[slot] = tonumber(itemId)
       end
 
-      tulos.profiilit[hahmo] = omat
-      tulos.hahmoja = tulos.hahmoja + 1
+      result.profiles[character] = own
+      result.characterCount = result.characterCount + 1
     end
   end
 
-  -- Saadut itemit sivuston koko historiasta. Vapaaehtoinen rivi: vanha
-  -- vienti ei sisalla naita, eika se ole syy hylata tuontia.
-  for rivi in teksti:gmatch("S=([^\n]+)") do
-    local hahmo, maara = rivi:match("^([^|]+)|(%d+)$")
-    if hahmo then
-      tulos.saadut[hahmo:match("^%s*(.-)%s*$")] = tonumber(maara)
+  -- Items received across the website's whole history. Optional line: an
+  -- older export does not contain it, and that is no reason to reject the
+  -- import.
+  for line in text:gmatch("S=([^\n]+)") do
+    local character, count = line:match("^([^|]+)|(%d+)$")
+    if character then
+      result.received[character:match("^%s*(.-)%s*$")] = tonumber(count)
     end
   end
 
-  -- Hahmon muut kirjoitusasut. Sivusto ei tieda missa muodossa peli antaa
-  -- nimen, joten se lahettaa vaihtoehdot ja addon valitsee osuvan.
-  for rivi in teksti:gmatch("A=([^\n]+)") do
-    local hahmo, muut = rivi:match("^([^|]+)|(.*)$")
+  -- Other spellings of a character name. The website does not know which
+  -- form the game uses, so it sends the alternatives and the addon picks
+  -- the one that matches.
+  for line in text:gmatch("A=([^\n]+)") do
+    local character, others = line:match("^([^|]+)|(.*)$")
 
-    if hahmo then
-      hahmo = hahmo:match("^%s*(.-)%s*$")
+    if character then
+      character = character:match("^%s*(.-)%s*$")
 
-      for alias in (muut or ""):gmatch("[^,]+") do
+      for alias in (others or ""):gmatch("[^,]+") do
         alias = alias:match("^%s*(.-)%s*$")
         if alias ~= "" then
-          tulos.aliakset[alias:lower()] = hahmo
+          result.aliases[alias:lower()] = character
         end
       end
     end
   end
 
-  -- Killan officerit. Raidin arvo yksin ei riita jaon avaamiseen, koska
-  -- assist annetaan usein markkereita varten eika loottia.
-  local officerRivi = teksti:match("\nO=([^\n]*)")
-  if officerRivi then
-    for nimi in officerRivi:gmatch("[^,]+") do
-      nimi = nimi:match("^%s*(.-)%s*$")
-      if nimi ~= "" then tulos.officerit[nimi] = true end
+  -- Guild officers. Raid rank alone is not enough to open a distribution,
+  -- because assist is often handed out for markers rather than loot.
+  local officerLine = text:match("\nO=([^\n]*)")
+  if officerLine then
+    for name in officerLine:gmatch("[^,]+") do
+      name = name:match("^%s*(.-)%s*$")
+      if name ~= "" then result.officers[name] = true end
     end
   end
 
-  if tulos.hahmoja == 0 then
-    return nil, "Yhtaan profiilia ei loytynyt."
+  if result.characterCount == 0 then
+    return nil, "Yhtään profiilia ei löytynyt."
   end
 
-  return tulos
+  return result
 end
 
---- Pelin antama nimi profiilien nimeksi.
+--- The name the game gives, as a profile name.
 ---
---- Kaikki sisainen vertailu tehdaan profiilin nimella. Muunnos tapahtuu
---- siella missa pelin nimi tulee addoniin - roosterista, viestin
---- lahettajasta tai kaupan vastapuolesta - jottei samasta pelaajasta ole
---- kahta eri nimea missaan muualla.
-function NS.Nimi(peliNimi)
-  if not peliNimi or peliNimi == "" then return peliNimi end
+--- All internal comparison uses the profile name. The conversion happens
+--- where the game's name enters the addon — the roster, a message sender
+--- or a trade partner — so that the same player never has two different
+--- names anywhere else.
+function NS.Name(gameName)
+  if not gameName or gameName == "" then return gameName end
 
-  -- Realm pois: raidikanavalta tuleva nimi voi olla "Nimi-Realm".
-  peliNimi = peliNimi:match("^[^-]+") or peliNimi
+  -- Drop the realm: a name from the raid channel can be "Name-Realm".
+  gameName = gameName:match("^[^-]+") or gameName
 
-  -- Tapahtuma voi osua ennen tallennuksen latautumista.
-  if not NS.db then return peliNimi end
+  -- An event can fire before the saved data has loaded.
+  if not NS.db then return gameName end
 
-  if NS.db.profiilit[peliNimi] then return peliNimi end
+  if NS.db.profiles[gameName] then return gameName end
 
-  local kanoninen = NS.db.aliakset and NS.db.aliakset[peliNimi:lower()]
-  return kanoninen or peliNimi
+  local canonical = NS.db.aliases and NS.db.aliases[gameName:lower()]
+  return canonical or gameName
 end
 
---- Tuo tekstin tietokantaan. Korvaa vanhan kokonaan.
+--- Imports the text into the database. Replaces the old data entirely.
 ---
---- Korvaa eika yhdista: vienti on sivuston koko totuus kyseisesta
---- raidista, ja yhdistaminen jattaisi poistetut valinnat voimaan.
-function NS.Tuo(teksti)
-  local data, virhe = NS.Jasenna(teksti)
-  if not data then return nil, virhe end
+--- Replaces rather than merges: the export is the website's whole truth
+--- about that raid, and merging would leave removed picks in force.
+function NS.Import(text)
+  local data, err = NS.Parse(text)
+  if not data then return nil, err end
 
-  NS.db.profiilit = data.profiilit
-  NS.db.saadut = data.saadut
-  NS.db.aliakset = data.aliakset
-  NS.db.officerit = data.officerit
-  NS.db.raidinNimi = data.raidinNimi
-  NS.db.tuotu = date("%Y-%m-%d %H:%M")
+  NS.db.profiles = data.profiles
+  NS.db.received = data.received
+  NS.db.aliases = data.aliases
+  NS.db.officers = data.officers
+  NS.db.raidName = data.raidName
+  NS.db.importedAt = date("%Y-%m-%d %H:%M")
 
   return data
 end
 
---- Ketka ovat varanneet taman itemin.
+--- Who has reserved this item.
 ---
---- Palauttaa listan { nimi = , paikka = }. Jarjestys on nimen mukaan,
---- jotta sama tilanne nayttaa aina samalta.
-function NS.KukaHaluaa(itemId)
-  local tulos = {}
-  if not itemId then return tulos end
+--- Returns a list of { name = , slot = }, sorted by name so the same
+--- situation always looks the same.
+function NS.WhoWants(itemId)
+  local result = {}
+  if not itemId then return result end
 
-  for hahmo, valinnat in pairs(NS.db.profiilit) do
-    for paikka, id in pairs(valinnat) do
+  for character, picks in pairs(NS.db.profiles) do
+    for slot, id in pairs(picks) do
       if id == itemId then
-        tulos[#tulos + 1] = { nimi = hahmo, paikka = paikka }
+        result[#result + 1] = { name = character, slot = slot }
         break
       end
     end
   end
 
-  table.sort(tulos, function(a, b) return a.nimi < b.nimi end)
-  return tulos
+  table.sort(result, function(a, b) return a.name < b.name end)
+  return result
 end
 
---- Sama kuin KukaHaluaa, mutta vain raidissa paikalla olevat.
+--- Same as WhoWants, but only those present in the raid.
 ---
---- Lootmasteria ei kiinnosta se, etta itemin on varannut joku joka ei ole
---- paikalla - lista olisi vain pidempi ilman etta siita on apua.
-function NS.KukaHaluaaPaikalla(itemId)
-  local kaikki = NS.KukaHaluaa(itemId)
-  local raidissa = NS.RaidinJasenet()
-  local tulos = {}
+--- The master does not care that someone who is not here reserved the
+--- item — the list would only be longer without being more useful.
+function NS.WhoWantsPresent(itemId)
+  local all = NS.WhoWants(itemId)
+  local inRaid = NS.RaidMembers()
+  local result = {}
 
-  for _, rivi in ipairs(kaikki) do
-    if raidissa[rivi.nimi] then
-      tulos[#tulos + 1] = rivi
+  for _, row in ipairs(all) do
+    if inRaid[row.name] then
+      result[#result + 1] = row
     end
   end
 
-  return tulos
+  return result
 end
 
---- Tuodut hahmot aakkosjarjestyksessa, valintojen maaran kanssa.
-function NS.Jasenet()
-  local lista = {}
+--- Imported characters in alphabetical order, with their pick counts.
+function NS.Members()
+  local list = {}
 
-  for hahmo, valinnat in pairs(NS.db.profiilit) do
+  for character, picks in pairs(NS.db.profiles) do
     local n = 0
-    for _ in pairs(valinnat) do n = n + 1 end
-    lista[#lista + 1] = { nimi = hahmo, valintoja = n }
+    for _ in pairs(picks) do n = n + 1 end
+    list[#list + 1] = { name = character, picks = n }
   end
 
-  table.sort(lista, function(a, b) return a.nimi < b.nimi end)
-  return lista
+  table.sort(list, function(a, b) return a.name < b.name end)
+  return list
 end
 
---- Montako itemia kyseinen hahmo on jo saanut.
+--- How many items this character has already received.
 ---
---- Sivuston luku ja taman koneen kirjaamat jaot yhteen: sivusto tietaa
---- kaiken mika on sille viety, ja paikallinen historia sen mika on jaettu
---- viennin jalkeen. Kun historia viedaan sivustolle ja profiilit tuodaan
---- uudelleen, luku siirtyy S-riveille ja paikallinen historia tyhjennetaan -
---- siksi nama eivat kahdenna toisiaan.
-function NS.SaatuMaara(hahmo)
-  local n = NS.db.saadut[hahmo] or 0
+--- The website's number plus the awards this machine recorded: the site
+--- knows everything that has been exported to it, and the local history
+--- knows what has been awarded since. Once the history is exported and
+--- the profiles re-imported, the count moves to the S lines and the local
+--- history is cleared — which is why these do not double up.
+function NS.ReceivedCount(character)
+  local n = NS.db.received[character] or 0
 
-  for _, rivi in ipairs(NS.db.historia) do
-    if rivi.nimi == hahmo then n = n + 1 end
+  for _, row in ipairs(NS.db.history) do
+    if row.name == character then n = n + 1 end
   end
 
   return n
 end
 
---- Paljonko luvusta on sivuston tietoa. Nakymassa erotteluna, jotta
---- lootmaster nakee onko luku oikeasti killan historia vai vain taman illan.
-function NS.SaatuSivustolta(hahmo)
-  return NS.db.saadut[hahmo] or 0
+--- How much of the number comes from the website. Shown separately so
+--- the master can see whether it is really the guild's history or only
+--- tonight's.
+function NS.ReceivedFromSite(character)
+  return NS.db.received[character] or 0
 end
 
---- Kirjaa jaetun lootin historiaan.
+--- Records an awarded item in the history.
 ---
---- Aikaleima talletetaan tekstina samassa muodossa kuin sivusto kayttaa,
---- jotta tuonti ei joudu arvailemaan muotoa.
---- Palauttaa rivin tunnisteen, jolla jako voidaan perua.
-function NS.LisaaHistoriaan(itemId, nimi, luku, koodi, itemNimi)
-  -- Juokseva tunniste eika indeksi: indeksi siirtyy kun rivi poistetaan,
-  -- ja peruminen osuisi silloin vaaraan riviin.
-  local id = NS.db.historiaSeuraavaId or 1
-  NS.db.historiaSeuraavaId = id + 1
+--- The timestamp is stored as text in the same format the website uses,
+--- so the import does not have to guess the format.
+--- Returns the row's id, which is what an undo needs.
+function NS.AddToHistory(itemId, name, roll, response, itemName)
+  -- A running id rather than an index: an index shifts when a row is
+  -- removed, and an undo would then hit the wrong row.
+  local id = NS.db.nextHistoryId or 1
+  NS.db.nextHistoryId = id + 1
 
-  -- Instanssi ja koko kirjataan jaon hetkella eika viennissa: sama
-  -- historia voi sisaltaa kaksi iltaa, jos vienti unohtui valilla.
-  local alue, koko = NS.Instanssi()
+  -- The instance and size are recorded at award time rather than at
+  -- export: one history can hold two nights if the export was forgotten
+  -- in between.
+  local zone, size = NS.Instance()
 
-  NS.db.historia[#NS.db.historia + 1] = {
+  NS.db.history[#NS.db.history + 1] = {
     id = id,
     itemId = itemId,
-    nimi = nimi,
-    luku = luku,
-    alue = alue,
-    koko = koko,
-    -- Peruste talletetaan numeron rinnalle: "kuka sai ja milla napilla"
-    -- on se mita historiasta myohemmin kysytaan.
-    koodi = koodi,
-    itemNimi = itemNimi,
-    aika = date("%Y-%m-%d %H:%M:%S"),
-    raidi = NS.db.raidinNimi,
+    name = name,
+    roll = roll,
+    zone = zone,
+    size = size,
+    -- The reason is stored alongside the number: "who got it and on
+    -- which button" is what the history is asked about later.
+    response = response,
+    itemName = itemName,
+    time = date("%Y-%m-%d %H:%M:%S"),
+    raid = NS.db.raidName,
   }
 
   return id
 end
 
---- Poistaa historiarivin tunnisteella. Kaytossa vain jaon perumisessa.
-function NS.PoistaHistoriasta(id)
+--- Removes a history row by id. Used only when undoing an award.
+function NS.RemoveFromHistory(id)
   if not id then return false end
 
-  for i, r in ipairs(NS.db.historia) do
-    if r.id == id then
-      table.remove(NS.db.historia, i)
+  for i, row in ipairs(NS.db.history) do
+    if row.id == id then
+      table.remove(NS.db.history, i)
       return true
     end
   end
@@ -261,65 +268,66 @@ function NS.PoistaHistoriasta(id)
   return false
 end
 
---- Historia tekstina sivustolle vietavaksi.
+--- The history as text, ready to export to the website.
 ---
---- Sama rivipohjainen muoto kuin tuonnissa, vastakkaiseen suuntaan.
-function NS.HistoriaTeksti()
-  -- Otsikon instanssi ja koko: ensisijaisesti se missa ollaan nyt, muuten
-  -- viimeisimman jaon paikka. Sivusto nimeaa lokin naiden perusteella.
-  local alue, koko = NS.Instanssi()
+--- The same line-based format as the import, in the other direction.
+function NS.HistoryText()
+  -- Zone and size for the header: primarily where we are now, otherwise
+  -- the place of the most recent award. The website names the log from
+  -- these.
+  local zone, size = NS.Instance()
 
-  if not alue then
-    for i = #NS.db.historia, 1, -1 do
-      if NS.db.historia[i].alue then
-        alue = NS.db.historia[i].alue
-        koko = NS.db.historia[i].koko or koko
+  if not zone then
+    for i = #NS.db.history, 1, -1 do
+      if NS.db.history[i].zone then
+        zone = NS.db.history[i].zone
+        size = NS.db.history[i].size or size
         break
       end
     end
   end
 
-  local rivit = {
+  local lines = {
     "LOOTHIST1",
-    "RAID=" .. (NS.db.raidinNimi or "?"),
+    "RAID=" .. (NS.db.raidName or "?"),
     "TIME=" .. date("%Y-%m-%d %H:%M:%S"),
   }
 
-  if alue then rivit[#rivit + 1] = "ZONE=" .. alue end
-  if koko and koko > 0 then rivit[#rivit + 1] = "SIZE=" .. koko end
+  if zone then lines[#lines + 1] = "ZONE=" .. zone end
+  if size and size > 0 then lines[#lines + 1] = "SIZE=" .. size end
 
-  for _, r in ipairs(NS.db.historia) do
-    -- Instanssi myos rivikohtaisesti: jos sama vienti sisaltaa kaksi
-    -- iltaa, otsikko voi kertoa vain toisen.
-    rivit[#rivit + 1] = ("L=%d|%s|%s|%s|%s|%s"):format(
-      r.itemId, r.nimi, r.aika,
-      r.luku and tostring(r.luku) or "-",
-      r.koodi or "-",
-      r.alue or "-")
+  for _, row in ipairs(NS.db.history) do
+    -- The zone per row as well: if one export holds two nights, the
+    -- header can only name one of them.
+    lines[#lines + 1] = ("L=%d|%s|%s|%s|%s|%s"):format(
+      row.itemId, row.name, row.time,
+      row.roll and tostring(row.roll) or "-",
+      row.response or "-",
+      row.zone or "-")
   end
 
-  return table.concat(rivit, "\n")
+  return table.concat(lines, "\n")
 end
 
-function NS.TulostaProfiilit()
-  local kpl = 0
-  for _ in pairs(NS.db.profiilit) do kpl = kpl + 1 end
+function NS.PrintProfiles()
+  local count = 0
+  for _ in pairs(NS.db.profiles) do count = count + 1 end
 
-  if kpl == 0 then
-    NS.Tulosta("ei tuotuja profiileja. /lp tuo")
+  if count == 0 then
+    NS.Print("ei tuotuja profiileja. /lp tuo")
     return
   end
 
-  NS.Tulosta(("%s — %d hahmoa, tuotu %s"):format(
-    NS.db.raidinNimi or "?", kpl, NS.db.tuotu or "?"))
+  NS.Print(("%s — %d hahmoa, tuotu %s"):format(
+    NS.db.raidName or "?", count, NS.db.importedAt or "?"))
 
-  local nimet = {}
-  for hahmo in pairs(NS.db.profiilit) do nimet[#nimet + 1] = hahmo end
-  table.sort(nimet)
+  local names = {}
+  for character in pairs(NS.db.profiles) do names[#names + 1] = character end
+  table.sort(names)
 
-  for _, hahmo in ipairs(nimet) do
+  for _, character in ipairs(names) do
     local n = 0
-    for _ in pairs(NS.db.profiilit[hahmo]) do n = n + 1 end
-    print(("  %s — %d valintaa"):format(hahmo, n))
+    for _ in pairs(NS.db.profiles[character]) do n = n + 1 end
+    print(("  %s — %d valintaa"):format(character, n))
   end
 end

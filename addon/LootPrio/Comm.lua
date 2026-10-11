@@ -1,184 +1,187 @@
 --[[
-  LootPrio — viestit raidin sisalla.
+  LootPrio — messages inside the raid.
 
-  Addonit puhuvat keskenaan omalla kanavallaan. Yksi viesti on enintaan
-  255 tavua, joten pitkat listat pilkotaan osiin.
+  Addons talk to each other on their own channel. One message is at most
+  255 bytes, so long lists are split into parts.
 
-  Vastaanottajat eivat luota lahettajaan sokeasti: session avaa vain
-  lootmaster. Muuten kuka tahansa voisi avata vastausikkunan koko raidille.
+  Receivers do not trust the sender blindly: only an officer may open a
+  distribution, and only that distribution's master may act on it. Every
+  check is made on the receiving machine from the game's own data, never
+  from the message body.
 ]]
 
 local ADDON, NS = ...
 
-local ETULIITE = "LOOTPRIO1"
+local PREFIX = "LOOTPRIO1"
 
 NS.Comm = {}
 
-local function kanava()
+local function channel()
   if IsInRaid() then return "RAID" end
   if IsInGroup() then return "PARTY" end
   return nil
 end
 
-function NS.Comm.Laheta(tyyppi, hyotykuorma)
-  local kohde = kanava()
-  if not kohde then return end
+function NS.Comm.Send(messageType, payload)
+  local target = channel()
+  if not target then return end
   if not C_ChatInfo or not C_ChatInfo.SendAddonMessage then return end
 
-  C_ChatInfo.SendAddonMessage(ETULIITE, tyyppi .. " " .. (hyotykuorma or ""), kohde)
+  C_ChatInfo.SendAddonMessage(PREFIX, messageType .. " " .. (payload or ""), target)
 end
 
--- Vastaanotto --------------------------------------------------------------
+-- Receiving ----------------------------------------------------------------
 
-function NS.Comm.Kasittele(tyyppi, sisalto, lahettaja)
-  if tyyppi == "SESSIO" then
-    -- Jaon avaa vain officer. Muuten kuka tahansa voisi avata
-    -- vastausikkunan koko raidille.
-    if not NS.OnOfficer(lahettaja) then return end
+function NS.Comm.Handle(messageType, body, sender)
+  if messageType == "SESSION" then
+    -- Only an officer opens a distribution. Otherwise anyone could pop a
+    -- response window on the whole raid.
+    if not NS.IsOfficer(sender) then return end
 
-    local sessioId, nakyvyys, lista =
-      sisalto:match("^(%S+)%s+(%S+)%s+(.*)$")
-    if not sessioId then return end
+    local sessionId, visibility, list = body:match("^(%S+)%s+(%S+)%s+(.*)$")
+    if not sessionId then return end
 
-    local itemit = {}
-    for indeksi, itemId in lista:gmatch("(%d+):(%d+)") do
-      itemit[#itemit + 1] = {
-        indeksi = tonumber(indeksi),
+    local items = {}
+    for index, itemId in list:gmatch("(%d+):(%d+)") do
+      items[#items + 1] = {
+        index = tonumber(index),
         itemId = tonumber(itemId),
       }
     end
 
-    NS.SaapuvaSessio(sessioId, nakyvyys, itemit, lahettaja)
+    NS.IncomingSession(sessionId, visibility, items, sender)
 
-  elseif tyyppi == "VASTAUS" then
-    local sessioId, indeksi, koodi = sisalto:match("^(%S+)%s+(%d+)%s+(%S+)$")
-    if not sessioId then return end
+  elseif messageType == "RESPONSE" then
+    local sessionId, index, code = body:match("^(%S+)%s+(%d+)%s+(%S+)$")
+    if not sessionId then return end
 
-    -- Vastaus kirjataan aina lahettajan nimelle, ei viestin sisallon
-    -- perusteella. Nain kukaan ei voi vastata toisen puolesta.
-    NS.KirjaaVastaus(sessioId, tonumber(indeksi), lahettaja, koodi)
+    -- A response is always recorded under the sender's name, never from
+    -- the message body. That way nobody can answer for someone else.
+    NS.RecordResponse(sessionId, tonumber(index), sender, code)
 
-  elseif tyyppi == "ARPA" then
-    -- Arvonnan tekee jaon avaaja, jotta kaikilla on sama numero.
-    if not NS.OnJakaja(lahettaja) then return end
+  elseif messageType == "ROLL" then
+    -- The roll is made by whoever opened the distribution, so everyone
+    -- sees the same number.
+    if not NS.IsDistributor(sender) then return end
 
-    local sessioId, indeksi, pelaaja, luku =
-      sisalto:match("^(%S+)%s+(%d+)%s+(%S+)%s+(%d+)$")
-    if not sessioId then return end
+    local sessionId, index, player, roll =
+      body:match("^(%S+)%s+(%d+)%s+(%S+)%s+(%d+)$")
+    if not sessionId then return end
 
-    NS.KirjaaArpa(sessioId, tonumber(indeksi), pelaaja, tonumber(luku))
+    NS.RecordRoll(sessionId, tonumber(index), player, tonumber(roll))
 
-  elseif tyyppi == "JAETTU" then
-    -- Vain taman jaon lootmaster. Officer-oikeus riittaa jaon avaamiseen,
-    -- ei toisen jaon itemien antamiseen.
-    if not NS.OnJakaja(lahettaja) then return end
+  elseif messageType == "AWARDED" then
+    -- Only this distribution's master. Officer rank is enough to open a
+    -- distribution, not to give away items in someone else's.
+    if not NS.IsDistributor(sender) then return end
 
-    local sessioId, indeksi, saaja, koodi, luku =
-      sisalto:match("^(%S+)%s+(%d+)%s+(%S+)%s+(%S+)%s+(%d+)$")
-    if not sessioId then return end
+    local sessionId, index, winner, code, roll =
+      body:match("^(%S+)%s+(%d+)%s+(%S+)%s+(%S+)%s+(%d+)$")
+    if not sessionId then return end
 
-    NS.KirjaaJako(sessioId, tonumber(indeksi), saaja, koodi, tonumber(luku))
+    NS.RecordAward(sessionId, tonumber(index), winner, code, tonumber(roll))
 
-  elseif tyyppi == "SULJE" then
-    if not NS.OnJakaja(lahettaja) then return end
-    NS.VastauksetSuljettu(sisalto:match("^(%S+)"))
+  elseif messageType == "CLOSE" then
+    if not NS.IsDistributor(sender) then return end
+    NS.ResponsesClosed(body:match("^(%S+)"))
 
-  elseif tyyppi == "PERU" then
-    if not NS.OnJakaja(lahettaja) then return end
+  elseif messageType == "UNDO" then
+    if not NS.IsDistributor(sender) then return end
 
-    local sessioId, indeksi = sisalto:match("^(%S+)%s+(%d+)$")
-    if not sessioId then return end
-    if NS.sessio and NS.sessio.id == sessioId then
-      NS.PeruJako(tonumber(indeksi), lahettaja)
+    local sessionId, index = body:match("^(%S+)%s+(%d+)$")
+    if not sessionId then return end
+    if NS.session and NS.session.id == sessionId then
+      NS.UndoAward(tonumber(index), sender)
     end
 
-  elseif tyyppi == "HALTUUN" then
-    -- Vain raidin johtaja voi ottaa jaon haltuunsa. Tarkistus tehdaan
-    -- jokaisella koneella raidin arvosta, ei viestin sisallosta.
-    if not NS.OnJohtaja(lahettaja) then return end
-    NS.JakoSiirtyi(sisalto:match("^(%S+)"), lahettaja)
+  elseif messageType == "TAKEOVER" then
+    -- Only the raid leader may take over a distribution. The check is
+    -- made on every machine from the raid rank, not the message body.
+    if not NS.IsLeader(sender) then return end
+    NS.DistributorChanged(body:match("^(%S+)"), sender)
 
-  elseif tyyppi == "LOPPU" then
-    -- Lopettaa se joka jakaa. Jos lootmaster on kadonnut, johtaja ottaa
-    -- jaon ensin haltuunsa ja lopettaa sitten.
-    if not NS.OnJakaja(lahettaja) then return end
-    NS.SessioPaattyi(sisalto:match("^(%S+)"))
+  elseif messageType == "END" then
+    -- Ended by whoever is distributing. If the master has vanished, the
+    -- leader takes over first and ends it after that.
+    if not NS.IsDistributor(sender) then return end
+    NS.SessionEnded(body:match("^(%S+)"))
 
-  elseif tyyppi == "KYSY" then
-    -- Kyselyn voi tehda kuka tahansa: vastaus kertoo vain version, eika
-    -- sen salaaminen hyodyta ketaan.
+  elseif messageType == "ASK" then
+    -- Anyone may ask: the answer only tells a version, and hiding it
+    -- would help nobody.
     --
-    -- Hajautettu viive: 40 samanaikaista vastausta tukkisi kanavan ja osa
-    -- viesteista katoaisi, jolloin lista nayttaisi puuttuvia addoneita.
-    C_Timer.After(math.random() * 3, NS.LahetaVersio)
+    -- Spread out in time: 40 simultaneous replies would flood the channel
+    -- and some would be dropped, making the list show addons as missing.
+    C_Timer.After(math.random() * 3, NS.SendVersion)
 
-  elseif tyyppi == "VERSIO" then
-    local versio, profiileja, omaProfiili =
-      sisalto:match("^(%S+)%s+(%d+)%s+(%d)$")
-    if not versio then return end
+  elseif messageType == "VERSION" then
+    local version, profileCount, ownProfile =
+      body:match("^(%S+)%s+(%d+)%s+(%d)$")
+    if not version then return end
 
-    NS.KirjaaVersio(lahettaja, versio, tonumber(profiileja), omaProfiili == "1")
+    NS.RecordVersion(sender, version, tonumber(profileCount), ownProfile == "1")
   end
 end
 
 --------------------------------------------------------------------------
--- Versiokattely
+-- Version handshake
 --------------------------------------------------------------------------
 
---- Kenella raidissa on addon ja mika versio.
+--- Who in the raid has the addon and which version.
 ---
---- Istuntokohtainen eika tallennettava: kysymys on siita mika tilanne on
---- juuri nyt, ja viime viikon tieto olisi vain harhaanjohtava.
-NS.addonit = {}
+--- Per session rather than saved: the question is what the situation is
+--- right now, and last week's answer would only mislead.
+NS.addons = {}
 
---- Oma versio ja profiilitilanne raidille.
+--- Our own version and profile status, to the raid.
 ---
---- Profiilien maara kertoo onko vienti tuotu lainkaan, ja oman profiilin
---- olemassaolo sen miksi LootPrio-nappi on harmaa. Molemmat ovat syita
---- joiden takia jako nayttaa rikkinaiselta ilman etta mikaan on rikki.
-function NS.LahetaVersio()
-  -- Roster-tapahtuma voi osua ennen tallennuksen latautumista.
+--- The profile count tells whether the export has been imported at all,
+--- and the presence of one's own profile tells why the LootPrio button is
+--- greyed out. Both are reasons a distribution looks broken while nothing
+--- is actually broken.
+function NS.SendVersion()
+  -- A roster event can fire before the saved data has loaded.
   if not NS.db then return end
 
-  local kpl = 0
-  for _ in pairs(NS.db.profiilit) do kpl = kpl + 1 end
+  local count = 0
+  for _ in pairs(NS.db.profiles) do count = count + 1 end
 
-  local oma = NS.db.profiilit[NS.OmaNimi()] and "1" or "0"
+  local own = NS.db.profiles[NS.MyName()] and "1" or "0"
 
-  NS.Comm.Laheta("VERSIO", ("%s %d %s"):format(NS.VERSIO, kpl, oma))
-  NS.KirjaaVersio(NS.OmaNimi(), NS.VERSIO, kpl, oma == "1")
+  NS.Comm.Send("VERSION", ("%s %d %s"):format(NS.VERSION, count, own))
+  NS.RecordVersion(NS.MyName(), NS.VERSION, count, own == "1")
 end
 
-function NS.KirjaaVersio(nimi, versio, profiileja, omaProfiili)
-  NS.addonit[nimi] = {
-    versio = versio,
-    profiileja = profiileja or 0,
-    omaProfiili = omaProfiili and true or false,
-    aika = GetTime(),
+function NS.RecordVersion(name, version, profileCount, ownProfile)
+  NS.addons[name] = {
+    version = version,
+    profileCount = profileCount or 0,
+    ownProfile = ownProfile and true or false,
+    time = GetTime(),
   }
 
-  if NS.PaivitaNakyma then NS.PaivitaNakyma("jasenet") end
+  if NS.RefreshView then NS.RefreshView("members") end
 end
 
---- Pyytaa kaikkien version.
-function NS.PyydaVersiot()
-  wipe(NS.addonit)
-  NS.Comm.Laheta("KYSY", "")
-  NS.LahetaVersio()
+--- Asks everyone for their version.
+function NS.AskVersions()
+  wipe(NS.addons)
+  NS.Comm.Send("ASK", "")
+  NS.SendVersion()
 end
 
---- Vertailee versionumeroita osa kerrallaan.
+--- Compares version numbers part by part.
 ---
---- Merkkijonovertailu riittaisi vain siihen asti kun numerot ovat yhden
---- merkin mittaisia: "0.10" olisi silla pienempi kuin "0.9".
-function NS.VersioVanhempi(a, b)
-  local function osat(v)
-    local lista = {}
-    for n in tostring(v or ""):gmatch("%d+") do lista[#lista + 1] = tonumber(n) end
-    return lista
+--- A string comparison would hold only while the numbers are one
+--- character long: "0.10" would otherwise sort below "0.9".
+function NS.VersionOlder(a, b)
+  local function parts(v)
+    local list = {}
+    for n in tostring(v or ""):gmatch("%d+") do list[#list + 1] = tonumber(n) end
+    return list
   end
 
-  local x, z = osat(a), osat(b)
+  local x, z = parts(a), parts(b)
   for i = 1, math.max(#x, #z) do
     local p, q = x[i] or 0, z[i] or 0
     if p ~= q then return p < q end
@@ -187,47 +190,46 @@ function NS.VersioVanhempi(a, b)
   return false
 end
 
-local kehys = CreateFrame("Frame")
-kehys:RegisterEvent("CHAT_MSG_ADDON")
-kehys:RegisterEvent("GROUP_ROSTER_UPDATE")
+local frame = CreateFrame("Frame")
+frame:RegisterEvent("CHAT_MSG_ADDON")
+frame:RegisterEvent("GROUP_ROSTER_UPDATE")
 
--- Oma versio kerrotaan raidiin liittyessa, mutta harvakseltaan: roster
--- muuttuu kymmenia kertoja raidin kokoontuessa, eika jokainen muutos ole
--- syy lahettaa mitaan.
-local viimeksiKerrottu = 0
+-- We announce our version when joining a raid, but sparingly: the roster
+-- changes dozens of times while a raid forms, and not every change is a
+-- reason to send anything.
+local lastAnnounced = 0
 
-kehys:SetScript("OnEvent", function(_, tapahtuma, etuliite, viesti, _, lahettaja)
-  if tapahtuma == "GROUP_ROSTER_UPDATE" then
+frame:SetScript("OnEvent", function(_, event, prefix, message, _, sender)
+  if event == "GROUP_ROSTER_UPDATE" then
     if not IsInGroup() then
-      wipe(NS.addonit)
+      wipe(NS.addons)
       return
     end
 
-    if GetTime() - viimeksiKerrottu > 60 then
-      viimeksiKerrottu = GetTime()
-      C_Timer.After(2, NS.LahetaVersio)
+    if GetTime() - lastAnnounced > 60 then
+      lastAnnounced = GetTime()
+      C_Timer.After(2, NS.SendVersion)
     end
     return
   end
 
-  if etuliite ~= ETULIITE then return end
+  if prefix ~= PREFIX then return end
 
-  -- Lahettajan nimi profiilien muotoon: NS.Nimi pudottaa myos realmin.
-  -- Nain vastaukset kirjautuvat samalla nimella kuin profiilit, eika
-  -- samasta pelaajasta synny kahta eri riviä.
-  local nimi = lahettaja and NS.Nimi(lahettaja) or ""
-  if nimi == "" then return end
+  -- The sender's name into the profiles' form: NS.Name also drops the
+  -- realm. That way responses are recorded under the same name as the
+  -- profiles, and the same player never appears as two rows.
+  local name = sender and NS.Name(sender) or ""
+  if name == "" then return end
 
-  local tyyppi, sisalto = viesti:match("^(%S+)%s*(.-)$")
-  if not tyyppi then return end
+  local messageType, body = message:match("^(%S+)%s*(.-)$")
+  if not messageType then return end
 
-  -- Omat viestit ohitetaan: ne on jo kasitelty lahetyksen yhteydessa.
-  if nimi == NS.OmaNimi() then return end
+  -- Our own messages are skipped: they were handled when sent.
+  if name == NS.MyName() then return end
 
-  NS.Comm.Kasittele(tyyppi, sisalto, nimi)
+  NS.Comm.Handle(messageType, body, name)
 end)
 
 if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
-  C_ChatInfo.RegisterAddonMessagePrefix(ETULIITE)
+  C_ChatInfo.RegisterAddonMessagePrefix(PREFIX)
 end
-

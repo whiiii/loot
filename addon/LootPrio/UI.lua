@@ -1,344 +1,347 @@
 --[[
-  LootPrio — ikkunat.
+  LootPrio — windows.
 
-  Yksi paaikkuna, jossa vasemmalla navigointinapit ja oikealla valittu
-  nakyma. Komennot ovat olemassa oikotieksi, mutta kaikki loytyy napeista -
-  kukaan ei opettele konsolikomentoja kesken raidin.
+  One main window with navigation buttons on the left and the selected
+  view on the right. Commands exist as a shortcut, but everything is
+  reachable from buttons — nobody learns console commands mid-raid.
+
+  UI strings are in Finnish because the guild is; the code around them is
+  not.
 ]]
 
 local ADDON, NS = ...
 
-local LAATUVARI = {
+local QUALITY_COLOUR = {
   [0] = "|cff9d9d9d", [1] = "|cffffffff", [2] = "|cff1eff00",
   [3] = "|cff0070dd", [4] = "|cffa335ee", [5] = "|cffff8000",
 }
 
-local KULTA = "|cffc9a227"
-local HIMMEA = "|cff8b9299"
+local GOLD = "|cffc9a227"
+local DIM = "|cff8b9299"
 local OK = "|cff8fd17a"
-local VIRHE = "|cffe08c8c"
+local BAD = "|cffe08c8c"
 
-local function varilla(laatu, teksti)
-  return (LAATUVARI[laatu or 1] or "|cffffffff") .. (teksti or "?") .. "|r"
+local function coloured(quality, text)
+  return (QUALITY_COLOUR[quality or 1] or "|cffffffff") .. (text or "?") .. "|r"
 end
 
---- Pelaajan nimi luokan varissa.
+--- A player's name in their class colour.
 ---
---- Luokkavari on nopein tapa erottaa nimet toisistaan: raidissa on 40
---- nimea, ja pelkka valkoinen lista vaatii lukemista jokaisen kohdalla.
-local function pelaajanVari(tiedosto)
-  local c = tiedosto and RAID_CLASS_COLORS and RAID_CLASS_COLORS[tiedosto]
+--- Class colour is the fastest way to tell names apart: a raid has 40 of
+--- them, and a plain white list has to be read name by name.
+local function classColour(fileName)
+  local c = fileName and RAID_CLASS_COLORS and RAID_CLASS_COLORS[fileName]
   if not c then return "|cffffffff" end
   return ("|cff%02x%02x%02x"):format(c.r * 255, c.g * 255, c.b * 255)
 end
 
---- Itemin kuvake. Pelin oma tietokanta tuntee sen vaikka itemia ei olisi
---- nahty: numero riittaa.
-local function ikoni(item)
-  if item.ikoni then return item.ikoni end
+--- An item's icon. The game's own database knows it even for an item that
+--- has never been seen: the number is enough.
+local function iconPath(item)
+  if item.icon then return item.icon end
   if item.itemId and GetItemIcon then return GetItemIcon(item.itemId) end
   return nil
 end
 
---- Kuvakeruutu laatureunuksella.
-local function teeIkoni(vanhempi, koko, item)
-  local kehys = CreateFrame("Frame", nil, vanhempi)
-  kehys:SetSize(koko, koko)
+--- An icon square with a quality border.
+local function makeIcon(parent, size, item)
+  local frame = CreateFrame("Frame", nil, parent)
+  frame:SetSize(size, size)
 
-  local kuva = kehys:CreateTexture(nil, "ARTWORK")
-  kuva:SetAllPoints()
-  kuva:SetTexture(ikoni(item) or "Interface\\Icons\\INV_Misc_QuestionMark")
-  -- Reunat pois: pelin kuvakkeissa on tyhjaa reunaa, joka tekee listasta
-  -- levottoman nakoisen.
-  kuva:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+  local texture = frame:CreateTexture(nil, "ARTWORK")
+  texture:SetAllPoints()
+  texture:SetTexture(iconPath(item) or "Interface\\Icons\\INV_Misc_QuestionMark")
+  -- Trim the edges: the game's icons have blank margins that make a list
+  -- look restless.
+  texture:SetTexCoord(0.07, 0.93, 0.07, 0.93)
 
-  local reunus = kehys:CreateTexture(nil, "OVERLAY")
-  reunus:SetAllPoints()
-  reunus:SetColorTexture(0, 0, 0, 0)
-
-  local vari = LAATUVARI[item.laatu or 1]
-  if vari then
-    local r = tonumber(vari:sub(5, 6), 16) / 255
-    local g = tonumber(vari:sub(7, 8), 16) / 255
-    local b = tonumber(vari:sub(9, 10), 16) / 255
-    kehys.reuna = CreateFrame("Frame", nil, kehys, "BackdropTemplate")
-    kehys.reuna:SetPoint("TOPLEFT", -1, 1)
-    kehys.reuna:SetPoint("BOTTOMRIGHT", 1, -1)
-    if kehys.reuna.SetBackdrop then
-      kehys.reuna:SetBackdrop({
+  local colour = QUALITY_COLOUR[item.quality or 1]
+  if colour then
+    local r = tonumber(colour:sub(5, 6), 16) / 255
+    local g = tonumber(colour:sub(7, 8), 16) / 255
+    local b = tonumber(colour:sub(9, 10), 16) / 255
+    frame.border = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    frame.border:SetPoint("TOPLEFT", -1, 1)
+    frame.border:SetPoint("BOTTOMRIGHT", 1, -1)
+    if frame.border.SetBackdrop then
+      frame.border:SetBackdrop({
         edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1,
       })
-      kehys.reuna:SetBackdropBorderColor(r, g, b, 1)
+      frame.border:SetBackdropBorderColor(r, g, b, 1)
     end
   end
 
-  return kehys
+  return frame
 end
 
-local paa          -- paaikkuna
-local nakymat = {} -- [avain] = kehys
-local navNapit = {}
-local nykyinen
+local main            -- the main window
+local views = {}      -- [key] = frame
+local navButtons = {}
+local currentView
 
 --------------------------------------------------------------------------
--- Apurit
+-- Helpers
 --------------------------------------------------------------------------
 
---- Vierivä alue, johon nakymat piirtavat sisaltonsa.
-local function teeVieritys(vanhempi, nimi)
-  local vieritys = CreateFrame("ScrollFrame", nimi, vanhempi,
+--- A scrolling area that views draw their content into.
+local function makeScroll(parent, name)
+  local scroll = CreateFrame("ScrollFrame", name, parent,
     "UIPanelScrollFrameTemplate")
-  vieritys:SetPoint("TOPLEFT", 0, 0)
-  vieritys:SetPoint("BOTTOMRIGHT", -26, 0)
+  scroll:SetPoint("TOPLEFT", 0, 0)
+  scroll:SetPoint("BOTTOMRIGHT", -26, 0)
 
-  local sisalto = CreateFrame("Frame", nil, vieritys)
-  sisalto:SetSize(1, 1)
-  vieritys:SetScrollChild(sisalto)
+  local content = CreateFrame("Frame", nil, scroll)
+  content:SetSize(1, 1)
+  scroll:SetScrollChild(content)
 
-  vieritys.sisalto = sisalto
-  return vieritys
+  scroll.content = content
+  return scroll
 end
 
---- Poistaa aiemmin piirretyt alikehykset ja tekstit.
+--- Removes previously drawn child frames and strings.
 ---
---- Kehyksia ei voi tuhota Luassa, joten ne piilotetaan ja kierratetaan.
---- Ilman kierratysta jokainen piirto jattaisi edellisen alleen.
-local function tyhjenna(sailio)
-  if sailio.lapset then
-    for _, lapsi in ipairs(sailio.lapset) do
-      lapsi:Hide()
-      lapsi:SetParent(nil)
+--- Frames cannot be destroyed in Lua, so they are hidden and recycled.
+--- Without recycling every redraw would leave the previous one underneath.
+local function clear(container)
+  if container.children then
+    for _, child in ipairs(container.children) do
+      child:Hide()
+      child:SetParent(nil)
     end
   end
-  sailio.lapset = {}
+  container.children = {}
 end
 
-local function lisaaLapsi(sailio, lapsi)
-  sailio.lapset = sailio.lapset or {}
-  sailio.lapset[#sailio.lapset + 1] = lapsi
-  return lapsi
+local function addChild(container, child)
+  container.children = container.children or {}
+  container.children[#container.children + 1] = child
+  return child
 end
 
-local function teksti(vanhempi, fontti, x, y, sisalto)
-  local fs = vanhempi:CreateFontString(nil, "ARTWORK", fontti or "GameFontHighlightSmall")
+local function label(parent, font, x, y, text)
+  local fs = parent:CreateFontString(nil, "ARTWORK", font or "GameFontHighlightSmall")
   fs:SetPoint("TOPLEFT", x, y)
-  fs:SetText(sisalto)
+  fs:SetText(text)
   return fs
 end
 
---- Liittaa pelin item-tooltipin kehykseen.
+--- Attaches the game's item tooltip to a frame.
 ---
---- Raidin keskella kukaan ei muista ulkoa mita "Wristguards of True Flight"
---- on, eika laukun avaaminen kesken jaon ole vaihtoehto.
-local function itemTooltip(kehys, linkki, itemId)
-  if not linkki and not itemId then return kehys end
+--- Mid-raid nobody remembers what "Wristguards of True Flight" is, and
+--- opening a bag during a distribution is not an option.
+local function itemTooltip(frame, link, itemId)
+  if not link and not itemId then return frame end
 
-  kehys:EnableMouse(true)
-  kehys:SetScript("OnEnter", function(self)
+  frame:EnableMouse(true)
+  frame:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 
-    if linkki then
-      GameTooltip:SetHyperlink(linkki)
+    if link then
+      GameTooltip:SetHyperlink(link)
     else
       GameTooltip:SetHyperlink("item:" .. itemId)
     end
 
     GameTooltip:Show()
   end)
-  kehys:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  frame:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-  return kehys
+  return frame
 end
 
---- Mitta tekstille, jotta tooltipin hiirialue ei ulotu tyhjaan tilaan.
-local mitta
-local function tekstinLeveys(sisalto, fontti)
-  if not mitta then
-    mitta = UIParent:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    mitta:Hide()
+--- Measures text so a tooltip's mouse area does not reach into blank space.
+local measure
+local function textWidth(text, font)
+  if not measure then
+    measure = UIParent:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    measure:Hide()
   end
 
-  mitta:SetFontObject(_G[fontti or "GameFontHighlightSmall"])
-  mitta:SetText(sisalto or "")
-  return mitta:GetStringWidth()
+  measure:SetFontObject(_G[font or "GameFontHighlightSmall"])
+  measure:SetText(text or "")
+  return measure:GetStringWidth()
 end
 
---- Hiirialue nimen kohdalle rivin alkuun.
+--- A mouse area over the name at the start of a row.
 ---
---- Vain nimen levyinen eika koko rivi: koko rivin alue avaisi tooltipin
---- aina kun kursori kulkee listan yli, ja peittaisi rivin napit.
-local function nimiAlue(rivi, nimi, itemId, linkki, fontti)
-  local alue = CreateFrame("Frame", nil, rivi)
-  alue:SetPoint("TOPLEFT", 4, 0)
-  alue:SetSize(tekstinLeveys(nimi, fontti) + 8, rivi:GetHeight())
-  return itemTooltip(alue, linkki, itemId)
+--- Only as wide as the name rather than the whole row: a full-row area
+--- would pop the tooltip whenever the cursor crossed the list, and it
+--- would cover the row's buttons.
+local function nameArea(row, name, itemId, link, font)
+  local area = CreateFrame("Frame", nil, row)
+  area:SetPoint("TOPLEFT", 4, 0)
+  area:SetSize(textWidth(name, font) + 8, row:GetHeight())
+  return itemTooltip(area, link, itemId)
 end
 
-local function nappi(vanhempi, leveys, korkeus, otsikko, toiminto)
-  local b = CreateFrame("Button", nil, vanhempi, "UIPanelButtonTemplate")
-  b:SetSize(leveys, korkeus)
-  b:SetText(otsikko)
-  b:SetScript("OnClick", toiminto)
+local function button(parent, width, height, text, onClick)
+  local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+  b:SetSize(width, height)
+  b:SetText(text)
+  b:SetScript("OnClick", onClick)
   return b
 end
 
 --------------------------------------------------------------------------
--- Paaikkuna ja navigointi
+-- Main window and navigation
 --------------------------------------------------------------------------
 
-local NAVI = {
-  { avain = "loot",     otsikko = "Loot" },
-  { avain = "kauppa",   otsikko = "Kauppa" },
-  { avain = "jasenet",  otsikko = "Jäsenet" },
-  { avain = "historia", otsikko = "Historia" },
-  { avain = "tuonti",   otsikko = "Tuonti" },
-  { avain = "asetukset", otsikko = "Asetukset" },
+local NAV = {
+  { key = "loot",     title = "Loot" },
+  { key = "trade",    title = "Kauppa" },
+  { key = "members",  title = "Jäsenet" },
+  { key = "history",  title = "Historia" },
+  { key = "import",   title = "Tuonti" },
+  { key = "settings", title = "Asetukset" },
 }
 
-local function naytaNakyma(avain)
-  nykyinen = avain
+local function showView(key)
+  currentView = key
 
-  for nimi, kehys in pairs(nakymat) do
-    if nimi == avain then kehys:Show() else kehys:Hide() end
+  for name, frame in pairs(views) do
+    if name == key then frame:Show() else frame:Hide() end
   end
 
-  for nimi, b in pairs(navNapit) do
-    -- Valittu nappi jaa pohjaan, jotta nakee missa on.
-    if nimi == avain then b:LockHighlight() else b:UnlockHighlight() end
+  for name, b in pairs(navButtons) do
+    -- The selected button stays pushed in, so you can see where you are.
+    if name == key then b:LockHighlight() else b:UnlockHighlight() end
   end
 
-  if NS.PaivitaNakyma then NS.PaivitaNakyma(avain) end
+  if NS.RefreshView then NS.RefreshView(key) end
 end
 
-local function luoPaa()
-  paa = CreateFrame("Frame", "LootPrioPaa", UIParent, "BasicFrameTemplateWithInset")
-  paa:SetSize(660, 500)
-  paa:SetPoint("CENTER")
-  paa:SetMovable(true)
-  paa:EnableMouse(true)
-  paa:RegisterForDrag("LeftButton")
-  paa:SetScript("OnDragStart", paa.StartMoving)
-  paa:SetScript("OnDragStop", paa.StopMovingOrSizing)
-  paa:SetClampedToScreen(true)
-  paa:Hide()
-  paa.TitleText:SetText("LootPrio")
-  tinsert(UISpecialFrames, "LootPrioPaa")
+local function createMain()
+  main = CreateFrame("Frame", "LootPrioMain", UIParent,
+    "BasicFrameTemplateWithInset")
+  main:SetSize(660, 500)
+  main:SetPoint("CENTER")
+  main:SetMovable(true)
+  main:EnableMouse(true)
+  main:RegisterForDrag("LeftButton")
+  main:SetScript("OnDragStart", main.StartMoving)
+  main:SetScript("OnDragStop", main.StopMovingOrSizing)
+  main:SetClampedToScreen(true)
+  main:Hide()
+  main.TitleText:SetText("LootPrio")
+  tinsert(UISpecialFrames, "LootPrioMain")
 
-  -- Navigointi vasemmalle.
+  -- Navigation on the left.
   local y = -34
-  for _, kohta in ipairs(NAVI) do
-    local b = nappi(paa, 104, 24, kohta.otsikko, function()
-      naytaNakyma(kohta.avain)
+  for _, entry in ipairs(NAV) do
+    local b = button(main, 104, 24, entry.title, function()
+      showView(entry.key)
     end)
     b:SetPoint("TOPLEFT", 12, y)
-    navNapit[kohta.avain] = b
+    navButtons[entry.key] = b
     y = y - 27
   end
 
-  -- Tilarivi alareunassa.
-  paa.tila = paa:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-  paa.tila:SetPoint("BOTTOMLEFT", 14, 12)
-  paa.tila:SetPoint("BOTTOMRIGHT", -14, 12)
-  paa.tila:SetJustifyH("LEFT")
+  -- Status line along the bottom.
+  main.status = main:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+  main.status:SetPoint("BOTTOMLEFT", 14, 12)
+  main.status:SetPoint("BOTTOMRIGHT", -14, 12)
+  main.status:SetJustifyH("LEFT")
 
-  -- Nakymien alue oikealle.
-  for _, kohta in ipairs(NAVI) do
-    local kehys = CreateFrame("Frame", nil, paa)
-    kehys:SetPoint("TOPLEFT", 126, -32)
-    kehys:SetPoint("BOTTOMRIGHT", -12, 30)
-    kehys:Hide()
-    nakymat[kohta.avain] = kehys
+  -- The view area on the right.
+  for _, entry in ipairs(NAV) do
+    local frame = CreateFrame("Frame", nil, main)
+    frame:SetPoint("TOPLEFT", 126, -32)
+    frame:SetPoint("BOTTOMRIGHT", -12, 30)
+    frame:Hide()
+    views[entry.key] = frame
   end
 end
 
-function NS.Avaa(nakyma)
-  if not paa then luoPaa() end
-  paa:Show()
-  naytaNakyma(nakyma or nykyinen or "loot")
+function NS.Open(view)
+  if not main then createMain() end
+  main:Show()
+  showView(view or currentView or "loot")
 end
 
-local function paivitaTila()
-  if not paa then return end
+local function refreshStatus()
+  if not main then return end
 
-  local kpl = 0
-  for _ in pairs(NS.db.profiilit) do kpl = kpl + 1 end
+  local count = 0
+  for _ in pairs(NS.db.profiles) do count = count + 1 end
 
-  paa.tila:SetText(("%s%s|r  ·  %d jäsentä  ·  tuotu %s  ·  arvonnat: %s"):format(
-    KULTA, NS.db.raidinNimi or "ei dataa", kpl, NS.db.tuotu or "—",
-    NS.db.rollienNakyvyys == "raid" and "koko raidi" or "vain officerit"))
+  main.status:SetText(("%s%s|r  ·  %d jäsentä  ·  tuotu %s  ·  arvonnat: %s"):format(
+    GOLD, NS.db.raidName or "ei dataa", count, NS.db.importedAt or "—",
+    NS.db.rollVisibility == "raid" and "koko raidi" or "vain officerit"))
 
-  -- Luovuttamatta olevien maara navinappiin: se on tehtavalista, ja
-  -- tekematta jaanyt kauppa ei saa jaada valilehden taakse huomaamatta.
-  if navNapit.kauppa then
-    local odottaa = NS.OdottavatKaupat and #NS.OdottavatKaupat() or 0
-    navNapit.kauppa:SetText(odottaa > 0 and ("Kauppa (" .. odottaa .. ")") or "Kauppa")
+  -- The number of undelivered trades on the nav button: it is a to-do
+  -- list, and a forgotten handover must not hide behind a tab.
+  if navButtons.trade then
+    local pending = NS.PendingTrades and #NS.PendingTrades() or 0
+    navButtons.trade:SetText(
+      pending > 0 and ("Kauppa (" .. pending .. ")") or "Kauppa")
   end
 end
 
 --------------------------------------------------------------------------
--- Näkymä: Loot
+-- View: Loot
 --------------------------------------------------------------------------
 
---- Itemin nimi ja laatu. Lootmasterilla ne tulevat loottiruudusta, muilla
---- pelin omasta tietokannasta - joka ei valttamatta tunne itemia heti.
-local function itemNimi(item)
-  if item.nimi then return item.nimi, item.laatu or 1 end
-  local nimi, _, laatu = GetItemInfo(item.itemId)
-  return nimi or ("item " .. item.itemId), laatu or 1
+--- An item's name and quality. The master gets them from the bags, others
+--- from the game's database — which may not know the item immediately.
+local function itemName(item)
+  if item.name then return item.name, item.quality or 1 end
+  local name, _, quality = GetItemInfo(item.itemId)
+  return name or ("item " .. item.itemId), quality or 1
 end
 
---- Tamanhetkisen jaon tulokset: kuka sai ja milla napilla.
+--- The current distribution's results: who got what and on which button.
 ---
---- Tama on se mika raiderille nakyy. Han ei nae ketka vastasivat mita
---- aanestyksen aikana, mutta lopputulos ja sen peruste ovat avoimia -
---- muuten lootmasterin paatosta ei voisi seurata lainkaan.
+--- This is what a raider sees. They do not see who answered what during
+--- the voting, but the outcome and its reason are open — otherwise the
+--- master's decision could not be followed at all.
 ---
---- Officerille sama lista on yhteenveto illan kulusta vastauslistan alla.
-local function piirraJaetut(sisalto, y)
-  local sessio = NS.sessio
-  if not sessio then return y end
+--- For an officer the same list is a summary of the night below the
+--- response list.
+local function drawAwarded(content, y)
+  local session = NS.session
+  if not session then return y end
 
-  local jaetut = {}
-  for _, item in pairs(sessio.itemit) do
-    if item.jaettu then jaetut[#jaetut + 1] = item end
+  local awarded = {}
+  for _, item in pairs(session.items) do
+    if item.awarded then awarded[#awarded + 1] = item end
   end
-  if #jaetut == 0 then return y end
+  if #awarded == 0 then return y end
 
-  table.sort(jaetut, function(a, b) return a.indeksi < b.indeksi end)
+  table.sort(awarded, function(a, b) return a.index < b.index end)
 
-  local otsikko = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
-  otsikko:SetPoint("TOPLEFT", 0, y - 8)
-  otsikko:SetPoint("TOPRIGHT", 0, y - 8)
-  otsikko:SetHeight(18)
-  teksti(otsikko, "GameFontNormalSmall", 8, 0, "JAETUT")
+  local header = addChild(content, CreateFrame("Frame", nil, content))
+  header:SetPoint("TOPLEFT", 0, y - 8)
+  header:SetPoint("TOPRIGHT", 0, y - 8)
+  header:SetHeight(18)
+  label(header, "GameFontNormalSmall", 8, 0, "JAETUT")
   y = y - 28
 
-  local luokat = NS.RaidinLuokat()
+  local classes = NS.RaidClasses()
 
-  for _, item in ipairs(jaetut) do
-    local nimi, laatu = itemNimi(item)
+  for _, item in ipairs(awarded) do
+    local name, quality = itemName(item)
 
-    local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
-    rivi:SetPoint("TOPLEFT", 0, y)
-    rivi:SetPoint("TOPRIGHT", 0, y)
-    rivi:SetHeight(22)
+    local row = addChild(content, CreateFrame("Frame", nil, content))
+    row:SetPoint("TOPLEFT", 0, y)
+    row:SetPoint("TOPRIGHT", 0, y)
+    row:SetHeight(22)
 
-    local kuvake = teeIkoni(rivi, 18, item)
-    kuvake:SetPoint("TOPLEFT", 8, -2)
-    itemTooltip(kuvake, item.linkki, item.itemId)
+    local icon = makeIcon(row, 18, item)
+    icon:SetPoint("TOPLEFT", 8, -2)
+    itemTooltip(icon, item.link, item.itemId)
 
-    local lyhyt = nimi:len() > 24 and (nimi:sub(1, 23) .. "…") or nimi
-    teksti(rivi, "GameFontHighlightSmall", 32, -4, varilla(laatu, lyhyt))
+    local short = name:len() > 24 and (name:sub(1, 23) .. "…") or name
+    label(row, "GameFontHighlightSmall", 32, -4, coloured(quality, short))
 
-    teksti(rivi, "GameFontHighlightSmall", 210, -4,
-      OK .. "→|r " .. pelaajanVari(luokat[item.saaja])
-        .. (item.saaja or "?") .. "|r")
+    label(row, "GameFontHighlightSmall", 210, -4,
+      OK .. "→|r " .. classColour(classes[item.winner])
+        .. (item.winner or "?") .. "|r")
 
-    -- Milla napilla: ilman perustetta lista kertoisi vain lopputuloksen,
-    -- ei sita miksi se on se.
-    local vast = item.saajanKoodi and NS.VASTAUS[item.saajanKoodi]
-    teksti(rivi, "GameFontHighlightSmall", 340, -4,
-      vast and (vast.vari .. vast.nimi .. "|r") or (HIMMEA .. "—|r"))
+    -- On which button: without the reason the list would give only the
+    -- outcome, not why it is the outcome.
+    local response = item.winnerCode and NS.RESPONSE[item.winnerCode]
+    label(row, "GameFontHighlightSmall", 340, -4,
+      response and (response.colour .. response.name .. "|r") or (DIM .. "—|r"))
 
     y = y - 22
   end
@@ -346,383 +349,383 @@ local function piirraJaetut(sisalto, y)
   return y
 end
 
-local function piirraLoot()
-  local kehys = nakymat.loot
+local function drawLoot()
+  local frame = views.loot
 
-  if not kehys.rakennettu then
-    kehys.rakennettu = true
+  if not frame.built then
+    frame.built = true
 
-    kehys.valilehdet = CreateFrame("Frame", nil, kehys)
-    kehys.valilehdet:SetPoint("TOPLEFT", 0, 0)
-    kehys.valilehdet:SetPoint("TOPRIGHT", 0, 0)
-    kehys.valilehdet:SetHeight(36)
+    frame.tabs = CreateFrame("Frame", nil, frame)
+    frame.tabs:SetPoint("TOPLEFT", 0, 0)
+    frame.tabs:SetPoint("TOPRIGHT", 0, 0)
+    frame.tabs:SetHeight(36)
 
-    kehys.vieritys = teeVieritys(kehys, "LootPrioLootScroll")
-    kehys.vieritys:SetPoint("TOPLEFT", 0, -42)
-    kehys.vieritys:SetPoint("BOTTOMRIGHT", -26, 28)
+    frame.scroll = makeScroll(frame, "LootPrioLootScroll")
+    frame.scroll:SetPoint("TOPLEFT", 0, -42)
+    frame.scroll:SetPoint("BOTTOMRIGHT", -26, 28)
 
-    kehys.napit = CreateFrame("Frame", nil, kehys)
-    kehys.napit:SetPoint("BOTTOMLEFT", 0, 0)
-    kehys.napit:SetPoint("BOTTOMRIGHT", 0, 0)
-    kehys.napit:SetHeight(26)
+    frame.buttons = CreateFrame("Frame", nil, frame)
+    frame.buttons:SetPoint("BOTTOMLEFT", 0, 0)
+    frame.buttons:SetPoint("BOTTOMRIGHT", 0, 0)
+    frame.buttons:SetHeight(26)
 
-    kehys.lopeta = nappi(kehys.napit, 110, 22, "Päätä jako", function()
-      -- Yhteenveto raidichattiin: se poistaa riidat ennen kuin niita on.
-      NS.PaataSessio(true)
+    frame.endButton = button(frame.buttons, 110, 22, "Päätä jako", function()
+      -- A summary to raid chat: it removes arguments before there are any.
+      NS.EndSession(true)
     end)
-    kehys.lopeta:SetPoint("BOTTOMLEFT", 0, 0)
+    frame.endButton:SetPoint("BOTTOMLEFT", 0, 0)
 
-    kehys.sulje = nappi(kehys.napit, 130, 22, "Sulje vastaukset", function()
-      NS.SuljeVastaukset()
+    frame.closeButton = button(frame.buttons, 130, 22, "Sulje vastaukset", function()
+      NS.CloseResponses()
     end)
-    kehys.sulje:SetPoint("BOTTOMLEFT", 114, 0)
+    frame.closeButton:SetPoint("BOTTOMLEFT", 114, 0)
 
-    kehys.peru = nappi(kehys.napit, 100, 22, "Peru jako", function()
-      NS.PeruJako()
+    frame.undoButton = button(frame.buttons, 100, 22, "Peru jako", function()
+      NS.UndoAward()
     end)
-    kehys.peru:SetPoint("BOTTOMLEFT", 248, 0)
+    frame.undoButton:SetPoint("BOTTOMLEFT", 248, 0)
 
-    -- Lootmaster voi pudota linjoilta kesken jaon. Ilman tata koko raidi
-    -- jaisi odottamaan hanen paluutaan.
-    kehys.haltuun = nappi(kehys.napit, 150, 22, "Ota jako haltuun", function()
-      NS.OtaHaltuun()
+    -- The master can drop offline mid-distribution. Without this the
+    -- whole raid would wait for them to come back.
+    frame.takeOver = button(frame.buttons, 150, 22, "Ota jako haltuun", function()
+      NS.TakeOver()
     end)
-    kehys.haltuun:SetPoint("BOTTOMLEFT", 352, 0)
+    frame.takeOver:SetPoint("BOTTOMLEFT", 352, 0)
 
-    -- Kulunut aika oikeaan reunaan. Mikaan ei pakota lopettamaan, mutta
-    -- jostain on nahtava milloin odottaminen ei enaa tuota vastauksia.
-    kehys.kello = kehys.napit:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    kehys.kello:SetPoint("BOTTOMRIGHT", -4, 4)
+    -- Elapsed time on the right. Nothing forces an end, but there has to
+    -- be somewhere to see when waiting stops producing responses.
+    frame.clock = frame.buttons:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    frame.clock:SetPoint("BOTTOMRIGHT", -4, 4)
 
-    kehys.napit:SetScript("OnUpdate", function(self, kulunut)
-      self.viive = (self.viive or 0) + kulunut
-      if self.viive < 1 then return end
-      self.viive = 0
+    frame.buttons:SetScript("OnUpdate", function(self, elapsed)
+      self.sinceUpdate = (self.sinceUpdate or 0) + elapsed
+      if self.sinceUpdate < 1 then return end
+      self.sinceUpdate = 0
 
-      if not NS.sessio then
-        kehys.kello:SetText("")
+      if not NS.session then
+        frame.clock:SetText("")
         return
       end
 
-      local s = NS.SessionKesto()
-      local raja = NS.db.vastausAika or 90
-      local vari = (s > raja and not NS.sessio.suljettu) and VIRHE or HIMMEA
+      local seconds = NS.SessionElapsed()
+      local limit = NS.db.responseTime or 90
+      local colour = (seconds > limit and not NS.session.closed) and BAD or DIM
 
-      kehys.kello:SetText(("%s%d:%02d%s"):format(
-        vari, math.floor(s / 60), s % 60,
-        NS.sessio.suljettu and "  suljettu|r" or "|r"))
+      frame.clock:SetText(("%s%d:%02d%s"):format(
+        colour, math.floor(seconds / 60), seconds % 60,
+        NS.session.closed and "  suljettu|r" or "|r"))
     end)
   end
 
-  tyhjenna(kehys.valilehdet)
-  tyhjenna(kehys.napit)
+  clear(frame.tabs)
+  clear(frame.buttons)
 
-  local sisalto = kehys.vieritys.sisalto
-  tyhjenna(sisalto)
-  sisalto:SetWidth(kehys:GetWidth() - 26)
+  local content = frame.scroll.content
+  clear(content)
+  content:SetWidth(frame:GetWidth() - 26)
 
-  local sessio = NS.sessio
-  local officer = NS.OnOfficer()
+  local session = NS.session
+  local officer = NS.IsOfficer()
 
-  -- Jakonapit vain sille joka jakaa. Officerin napit nakyivat aiemmin
-  -- kaikille apulaisille, jolloin kaksi officeria saattoi painaa samaa
-  -- itemia eri suuntiin.
-  local jakaja = sessio ~= nil and sessio.lootmaster == NS.OmaNimi()
+  -- The distribution buttons only for the one distributing. They used to
+  -- show for every assist, which let two officers push the same item in
+  -- different directions.
+  local distributor = session ~= nil and session.master == NS.MyName()
 
-  kehys.lopeta:SetShown(jakaja)
-  kehys.sulje:SetShown(jakaja and not sessio.suljettu)
-  kehys.peru:SetShown(jakaja and sessio.viimeisin ~= nil)
+  frame.endButton:SetShown(distributor)
+  frame.closeButton:SetShown(distributor and not session.closed)
+  frame.undoButton:SetShown(distributor and session.lastAwarded ~= nil)
 
-  -- Haltuunotto vain johtajalle ja vain jos joku muu jakaa.
-  kehys.haltuun:SetShown(
-    sessio ~= nil and not jakaja and NS.OnJohtaja() and not sessio.testi)
+  -- Taking over only for the leader, and only if someone else holds it.
+  frame.takeOver:SetShown(
+    session ~= nil and not distributor and NS.IsLeader() and not session.test)
 
-  if not sessio then
-    local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
-    rivi:SetPoint("TOPLEFT", 0, -4)
-    rivi:SetPoint("TOPRIGHT", 0, -4)
-    rivi:SetHeight(90)
+  if not session then
+    local row = addChild(content, CreateFrame("Frame", nil, content))
+    row:SetPoint("TOPLEFT", 0, -4)
+    row:SetPoint("TOPRIGHT", 0, -4)
+    row:SetHeight(90)
 
     if officer then
-      teksti(rivi, "GameFontDisableSmall", 4, 0,
+      label(row, "GameFontDisableSmall", 4, 0,
         "Ei jakoa käynnissä.\n\nKerää lootit laukkuihisi ja paina Jaa lootit.\n"
         .. "Jaon avaaja on sen illan lootmaster.")
 
-      local b = nappi(rivi, 130, 24, "Jaa lootit", function()
-        NS.AvaaValinta()
+      local b = button(row, 130, 24, "Jaa lootit", function()
+        NS.OpenPicker()
       end)
       b:SetPoint("TOPLEFT", 4, -56)
-    elseif not NS.SivustonOfficer(NS.OmaNimi()) and NS.OnJohtajaTaiApulainen() then
-      -- Raid assist ilman killan officer-oikeutta. Ilman tata selitysta
-      -- nappi vain puuttuisi, eika mikaan kertoisi miksi.
-      teksti(rivi, "GameFontDisableSmall", 4, 0,
+    elseif not NS.IsSiteOfficer(NS.MyName()) and NS.HasRaidRank() then
+      -- A raid assist without guild officer rights. Without this
+      -- explanation the button would simply be missing and nothing would
+      -- say why.
+      label(row, "GameFontDisableSmall", 4, 0,
         "Ei jakoa käynnissä.\n\n"
-        .. VIRHE .. "Sinulla on raid assist, mutta et ole officer\n"
+        .. BAD .. "Sinulla on raid assist, mutta et ole officer\n"
         .. "killan sivustolla — jakoa ei voi avata.|r\n"
         .. "Pyydä officer-oikeutta tai anna jako toiselle.")
     else
-      teksti(rivi, "GameFontDisableSmall", 4, 0,
+      label(row, "GameFontDisableSmall", 4, 0,
         "Ei jakoa käynnissä.\n\nVastausikkuna aukeaa itsestään kun\n"
         .. "lootmaster laittaa lootit jakoon.")
     end
 
-    sisalto:SetHeight(96)
+    content:SetHeight(96)
     return
   end
 
-  -- Välilehdet vain jakamattomista: jaettu item katoaa listasta ja jää
-  -- historiaan, joten jäljellä on aina se mikä on vielä päättämättä.
-  local avoimet = NS.AvoimetItemit()
+  -- Tabs only for items not yet awarded: an awarded one leaves the list
+  -- and stays in the history, so what is left is always what is still
+  -- undecided.
+  local open = NS.OpenItems()
 
-  if #avoimet == 0 then
-    local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
-    rivi:SetPoint("TOPLEFT", 0, -4)
-    rivi:SetHeight(40)
-    teksti(rivi, "GameFontNormal", 4, 0, OK .. "Kaikki jaettu.|r")
-    teksti(rivi, "GameFontDisableSmall", 4, -20,
+  if #open == 0 then
+    local row = addChild(content, CreateFrame("Frame", nil, content))
+    row:SetPoint("TOPLEFT", 0, -4)
+    row:SetHeight(40)
+    label(row, "GameFontNormal", 4, 0, OK .. "Kaikki jaettu.|r")
+    label(row, "GameFontDisableSmall", 4, -20,
       "Tulokset jäävät Historia-välilehdelle.")
 
-    -- Tulokset nakyviin myos tassa: ilman niita viimeisen itemin jalkeen
-    -- jaisi tyhja ruutu juuri silloin kun kaikkia kiinnostaa mita meni
-    -- kenellekin.
-    local y = piirraJaetut(sisalto, -44)
-    sisalto:SetHeight(math.max(1, -y))
+    -- The results here too: without them the last award would leave an
+    -- empty screen exactly when everyone wants to know what went where.
+    local y = drawAwarded(content, -44)
+    content:SetHeight(math.max(1, -y))
     return
   end
 
-  if not sessio.valittu or not sessio.itemit[sessio.valittu]
-     or sessio.itemit[sessio.valittu].jaettu then
-    sessio.valittu = avoimet[1].indeksi
+  if not session.selected or not session.items[session.selected]
+     or session.items[session.selected].awarded then
+    session.selected = open[1].index
   end
 
-  -- Valilehdet kuvakkeina eika nimina. Kuusi itemia ei mahdu nimina
-  -- riville ilman etta nimet katkaistaan kolmeentoista merkkiin, ja
-  -- katkaistu nimi on huonompi tunnistettava kuin kuvake.
+  -- Tabs as icons rather than names. Six items do not fit on a row as
+  -- names without cutting them to thirteen characters, and a cut name is
+  -- worse to recognise than an icon.
   local x = 0
-  for _, item in ipairs(avoimet) do
-    local nimi, laatu = itemNimi(item)
-
-    local b = CreateFrame("Button", nil, kehys.valilehdet)
+  for _, item in ipairs(open) do
+    local b = CreateFrame("Button", nil, frame.tabs)
     b:SetSize(34, 34)
     b:SetPoint("TOPLEFT", x, 0)
 
-    local kuva = b:CreateTexture(nil, "ARTWORK")
-    kuva:SetAllPoints()
-    kuva:SetTexture(ikoni(item) or "Interface\\Icons\\INV_Misc_QuestionMark")
-    kuva:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    local texture = b:CreateTexture(nil, "ARTWORK")
+    texture:SetAllPoints()
+    texture:SetTexture(iconPath(item) or "Interface\\Icons\\INV_Misc_QuestionMark")
+    texture:SetTexCoord(0.07, 0.93, 0.07, 0.93)
 
-    -- Valittu erottuu kirkkaana, muut himmennettyina. Pelkka reunus ei
-    -- erotu tarpeeksi kun kuvakkeet ovat vierekkain.
-    if sessio.valittu == item.indeksi then
-      local kehystys = b:CreateTexture(nil, "OVERLAY")
-      kehystys:SetPoint("TOPLEFT", -2, 2)
-      kehystys:SetPoint("BOTTOMRIGHT", 2, -2)
-      kehystys:SetColorTexture(0.79, 0.64, 0.15, 0.85)
-      kehystys:SetDrawLayer("BACKGROUND")
+    -- The selected one stands out bright, the rest are dimmed. A border
+    -- alone does not read clearly enough with icons side by side.
+    if session.selected == item.index then
+      local glow = b:CreateTexture(nil, "OVERLAY")
+      glow:SetPoint("TOPLEFT", -2, 2)
+      glow:SetPoint("BOTTOMRIGHT", 2, -2)
+      glow:SetColorTexture(0.79, 0.64, 0.15, 0.85)
+      glow:SetDrawLayer("BACKGROUND")
     else
-      kuva:SetVertexColor(0.45, 0.45, 0.45)
+      texture:SetVertexColor(0.45, 0.45, 0.45)
     end
 
-    -- Vastanneiden maara kuvakkeen kulmaan: siita nakee yhdella
-    -- silmayksella mika item odottaa viela vastauksia.
+    -- The response count in the icon's corner: it shows at a glance which
+    -- item is still waiting.
     --
-    -- Vain niille jotka saavat nahda vastaukset. Luku ei kerro kuka
-    -- vastasi mita, mutta se on silti tietoa aanestyksen kulusta - ja
-    -- raiderin kuuluu nahda vasta lopputulos.
-    if NS.NaytaKaikkiVastaukset() then
-      local vastanneet = 0
-      for _ in pairs(item.vastaukset) do vastanneet = vastanneet + 1 end
+    -- Only for those who may see the responses. The number does not say
+    -- who answered what, but it is still information about how the vote
+    -- is going — and a raider is meant to see only the outcome.
+    if NS.ShowAllResponses() then
+      local responded = 0
+      for _ in pairs(item.responses) do responded = responded + 1 end
 
-      local luku = b:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
-      luku:SetPoint("BOTTOMRIGHT", -1, 1)
-      luku:SetText(vastanneet > 0 and tostring(vastanneet) or "")
+      local count = b:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+      count:SetPoint("BOTTOMRIGHT", -1, 1)
+      count:SetText(responded > 0 and tostring(responded) or "")
     end
 
     b:SetScript("OnClick", function()
-      sessio.valittu = item.indeksi
-      NS.PaivitaNakyma("loot")
+      session.selected = item.index
+      NS.RefreshView("loot")
     end)
 
-    itemTooltip(b, item.linkki, item.itemId)
-    lisaaLapsi(kehys.valilehdet, b)
+    itemTooltip(b, item.link, item.itemId)
+    addChild(frame.tabs, b)
 
     x = x + 38
   end
 
-  local item = sessio.itemit[sessio.valittu]
+  local item = session.items[session.selected]
   if not item then return end
 
-  local nimi, laatu = itemNimi(item)
+  local name, quality = itemName(item)
   local y = -4
 
-  -- Otsikkorivi: kuvake, nimi ja kuka jakaa. Lootmasterin nimi on tassa
-  -- siksi, etta jokaisen pitaa nahda kenen paatosta odotetaan.
-  local otsikko = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
-  otsikko:SetPoint("TOPLEFT", 0, y)
-  otsikko:SetPoint("TOPRIGHT", 0, y)
-  otsikko:SetHeight(38)
+  -- Header row: icon, name and who is distributing. The master's name is
+  -- here because everyone needs to see whose decision is being waited on.
+  local header = addChild(content, CreateFrame("Frame", nil, content))
+  header:SetPoint("TOPLEFT", 0, y)
+  header:SetPoint("TOPRIGHT", 0, y)
+  header:SetHeight(38)
 
-  local kuvake = teeIkoni(otsikko, 32, item)
-  kuvake:SetPoint("TOPLEFT", 4, -2)
-  itemTooltip(kuvake, item.linkki, item.itemId)
+  local icon = makeIcon(header, 32, item)
+  icon:SetPoint("TOPLEFT", 4, -2)
+  itemTooltip(icon, item.link, item.itemId)
 
-  teksti(otsikko, "GameFontNormal", 42, -2,
-    varilla(laatu, nimi)
-    .. (item.jaettu and ("  " .. OK .. "→ " .. (item.saaja or "?") .. "|r") or ""))
+  label(header, "GameFontNormal", 42, -2,
+    coloured(quality, name)
+    .. (item.awarded and ("  " .. OK .. "→ " .. (item.winner or "?") .. "|r") or ""))
 
-  local lm = sessio.lootmaster or "?"
-  teksti(otsikko, "GameFontDisableSmall", 42, -20,
+  local master = session.master or "?"
+  label(header, "GameFontDisableSmall", 42, -20,
     ("jakaa: %s%s|r%s"):format(
-      NS.Paikalla(lm) and HIMMEA or VIRHE, lm,
-      NS.Paikalla(lm) and "" or (VIRHE .. " (poissa)|r")))
+      NS.IsPresent(master) and DIM or BAD, master,
+      NS.IsPresent(master) and "" or (BAD .. " (poissa)|r")))
 
   y = y - 42
 
-  -- Omat vastausnapit, jos itemia ei ole viela jaettu.
-  if not item.jaettu then
-    local napit = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
-    napit:SetPoint("TOPLEFT", 0, y)
-    napit:SetPoint("TOPRIGHT", 0, y)
-    napit:SetHeight(24)
+  -- Our own response buttons, if the item has not been awarded yet.
+  if not item.awarded then
+    local buttons = addChild(content, CreateFrame("Frame", nil, content))
+    buttons:SetPoint("TOPLEFT", 0, y)
+    buttons:SetPoint("TOPRIGHT", 0, y)
+    buttons:SetHeight(24)
 
-    local valittu = sessio.omaVastaus[item.indeksi]
-    local nx = 4
+    local chosen = session.ownResponse[item.index]
+    local bx = 4
 
-    for _, v in ipairs(NS.VASTAUKSET) do
-      -- LootPrio vain jos item on oikeasti omassa profiilissa. Sivusto on
-      -- se joka ratkaisee, ei pelaajan oma arvio.
-      local sallittu = (v.koodi ~= "prio") or NS.OmassaProfiilissa(item.itemId)
-      local leveys = (v.koodi == "pass") and 50 or 68
+    for _, response in ipairs(NS.RESPONSES) do
+      -- LootPrio only if the item really is in our own profile. The
+      -- website decides that, not the player's own estimate.
+      local allowed = (response.code ~= "prio") or NS.InOwnProfile(item.itemId)
+      local width = (response.code == "pass") and 50 or 68
 
-      local b = nappi(napit, leveys, 20, v.nimi, function()
-        NS.Vastaa(item.indeksi, v.koodi)
+      local b = button(buttons, width, 20, response.name, function()
+        NS.Respond(item.index, response.code)
       end)
-      b:SetPoint("TOPLEFT", nx, 0)
-      b:SetEnabled(sallittu and not valittu and not sessio.suljettu)
-      if valittu == v.koodi then b:LockHighlight() end
+      b:SetPoint("TOPLEFT", bx, 0)
+      b:SetEnabled(allowed and not chosen and not session.closed)
+      if chosen == response.code then b:LockHighlight() end
 
-      nx = nx + leveys + 4
+      bx = bx + width + 4
     end
 
     y = y - 28
 
-    -- Syy harmaalle napille nakyviin. Ilman tata pelaaja ei tieda onko
-    -- kyse suljetusta jaosta, puuttuvasta profiilista vai omasta
-    -- vastauksesta joka jo meni lapi.
-    if sessio.suljettu or not NS.OmassaProfiilissa(item.itemId) then
-      local syy = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
-      syy:SetPoint("TOPLEFT", 0, y)
-      syy:SetHeight(14)
-      teksti(syy, "GameFontDisableSmall", 8, 0,
-        sessio.suljettu and "vastaukset suljettu"
+    -- The reason for a greyed button, visible. Without it the player
+    -- cannot tell whether the distribution is closed, the profile is
+    -- missing, or their own answer already went through.
+    if session.closed or not NS.InOwnProfile(item.itemId) then
+      local reason = addChild(content, CreateFrame("Frame", nil, content))
+      reason:SetPoint("TOPLEFT", 0, y)
+      reason:SetHeight(14)
+      label(reason, "GameFontDisableSmall", 8, 0,
+        session.closed and "vastaukset suljettu"
           or "LootPrio ei käytössä: item ei ole profiilissasi")
       y = y - 16
     end
   end
 
-  -- Vastaukset. Lootmasterin asetuksesta riippuu naytetaanko kaikkien
-  -- vastaukset vai vain oma.
-  local kaikki = NS.NaytaKaikkiVastaukset()
-  local vastaukset = NS.ItemienVastaukset(item)
+  -- Responses. The master's setting decides whether everyone's responses
+  -- are shown or only our own.
+  local showAll = NS.ShowAllResponses()
+  local responses = NS.ItemResponses(item)
 
-  if not kaikki then
-    local omat = {}
-    for _, v in ipairs(vastaukset) do
-      if v.nimi == NS.OmaNimi() then omat[#omat + 1] = v end
+  if not showAll then
+    local own = {}
+    for _, r in ipairs(responses) do
+      if r.name == NS.MyName() then own[#own + 1] = r end
     end
-    vastaukset = omat
+    responses = own
   end
 
-  if #vastaukset == 0 then
-    local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
-    rivi:SetPoint("TOPLEFT", 0, y)
-    rivi:SetHeight(18)
-    teksti(rivi, "GameFontDisableSmall", 8, 0, "ei vastauksia vielä")
+  if #responses == 0 then
+    local row = addChild(content, CreateFrame("Frame", nil, content))
+    row:SetPoint("TOPLEFT", 0, y)
+    row:SetHeight(18)
+    label(row, "GameFontDisableSmall", 8, 0, "ei vastauksia vielä")
     y = y - 20
   else
-    -- Otsikoista voi lajitella. Oletus on peruste, koska se ratkaisee -
-    -- mutta saadut itemit tai arvonta voivat olla se mita haetaan.
-    local otsikot = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
-    otsikot:SetPoint("TOPLEFT", 0, y)
-    otsikot:SetPoint("TOPRIGHT", 0, y)
-    otsikot:SetHeight(18)
+    -- The headers sort. The default is the reason, because that decides —
+    -- but received items or the roll may be what is being looked for.
+    local headers = addChild(content, CreateFrame("Frame", nil, content))
+    headers:SetPoint("TOPLEFT", 0, y)
+    headers:SetPoint("TOPRIGHT", 0, y)
+    headers:SetHeight(18)
 
-    local SARAKKEET = {
-      { avain = "jarjestys", otsikko = "VASTAUS", x = 8 },
-      { avain = "luku",      otsikko = "ROLL",    x = 92 },
-      { avain = "nimi",      otsikko = "PELAAJA", x = 130 },
-      { avain = "saatu",     otsikko = "SAATU",   x = 250 },
+    local COLUMNS = {
+      { field = "order",    title = "VASTAUS", x = 8 },
+      { field = "roll",     title = "ROLL",    x = 92 },
+      { field = "name",     title = "PELAAJA", x = 130 },
+      { field = "received", title = "SAATU",   x = 250 },
     }
 
-    for _, s in ipairs(SARAKKEET) do
-      local merkki = ""
-      if NS.lajittelu == s.avain then
-        merkki = NS.lajitteluNouseva and " ▲" or " ▼"
+    for _, column in ipairs(COLUMNS) do
+      local marker = ""
+      if NS.sortField == column.field then
+        marker = NS.sortAscending and " ▲" or " ▼"
       end
 
-      local b = CreateFrame("Button", nil, otsikot)
+      local b = CreateFrame("Button", nil, headers)
       b:SetSize(76, 16)
-      b:SetPoint("TOPLEFT", s.x - 4, 0)
+      b:SetPoint("TOPLEFT", column.x - 4, 0)
 
       local fs = b:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
       fs:SetPoint("LEFT", 4, 0)
-      fs:SetText(s.otsikko .. merkki)
+      fs:SetText(column.title .. marker)
 
       b:SetScript("OnClick", function()
-        if NS.lajittelu == s.avain then
-          NS.lajitteluNouseva = not NS.lajitteluNouseva
+        if NS.sortField == column.field then
+          NS.sortAscending = not NS.sortAscending
         else
-          NS.lajittelu = s.avain
-          NS.lajitteluNouseva = (s.avain == "jarjestys" or s.avain == "nimi")
+          NS.sortField = column.field
+          NS.sortAscending = (column.field == "order" or column.field == "name")
         end
-        NS.PaivitaNakyma("loot")
+        NS.RefreshView("loot")
       end)
     end
 
     y = y - 18
 
-    local luokat = NS.RaidinLuokat()
-    local pariton = false
+    local classes = NS.RaidClasses()
+    local striped = false
 
-    for _, v in ipairs(vastaukset) do
-      local vast = NS.VASTAUS[v.koodi]
+    for _, r in ipairs(responses) do
+      local response = NS.RESPONSE[r.code]
 
-      local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
-      rivi:SetPoint("TOPLEFT", 0, y)
-      rivi:SetPoint("TOPRIGHT", 0, y)
-      rivi:SetHeight(20)
+      local row = addChild(content, CreateFrame("Frame", nil, content))
+      row:SetPoint("TOPLEFT", 0, y)
+      row:SetPoint("TOPRIGHT", 0, y)
+      row:SetHeight(20)
 
-      -- Joka toinen rivi tummempi. Nelikymmenen nimen listassa silma
-      -- hukkaa rivin ilman sita.
-      pariton = not pariton
-      if pariton then
-        local tausta = rivi:CreateTexture(nil, "BACKGROUND")
-        tausta:SetAllPoints()
-        tausta:SetColorTexture(1, 1, 1, 0.03)
+      -- Every other row darker. In a list of forty names the eye loses
+      -- the row without it.
+      striped = not striped
+      if striped then
+        local background = row:CreateTexture(nil, "BACKGROUND")
+        background:SetAllPoints()
+        background:SetColorTexture(1, 1, 1, 0.03)
       end
 
-      teksti(rivi, "GameFontHighlightSmall", 8, -3, vast.vari .. vast.nimi .. "|r")
-      teksti(rivi, "GameFontHighlightSmall", 92, -3,
-        KULTA .. (v.luku and tostring(v.luku) or "—") .. "|r")
+      label(row, "GameFontHighlightSmall", 8, -3,
+        response.colour .. response.name .. "|r")
+      label(row, "GameFontHighlightSmall", 92, -3,
+        GOLD .. (r.roll and tostring(r.roll) or "—") .. "|r")
 
-      -- Vaarin perusteltu prio merkitaan. Tarkistus tehdaan jokaisella
-      -- koneella tuotuja profiileja vasten, joten vaite nakyy kaikille.
-      local huomio = ""
-      if v.koodi == "prio" and not v.prioOk then
-        huomio = VIRHE .. " (!)|r"
+      -- A wrongly justified prio is marked. The check is made on every
+      -- machine against the imported profiles, so the claim shows to all.
+      local warning = ""
+      if r.code == "prio" and not r.prioOk then
+        warning = BAD .. " (!)|r"
       end
 
-      teksti(rivi, "GameFontHighlightSmall", 130, -3,
-        pelaajanVari(luokat[v.nimi]) .. v.nimi .. "|r" .. huomio)
+      label(row, "GameFontHighlightSmall", 130, -3,
+        classColour(classes[r.name]) .. r.name .. "|r" .. warning)
 
-      -- Montako itemia pelaaja on jo saanut. Lootmasterin tarkein luku
-      -- heti perusteen jalkeen.
-      teksti(rivi, "GameFontHighlightSmall", 250, -3,
-        (v.saatu > 0 and KULTA or HIMMEA) .. tostring(v.saatu) .. "|r")
+      -- How many items the player has already received. The master's most
+      -- important number right after the reason.
+      label(row, "GameFontHighlightSmall", 250, -3,
+        (r.received > 0 and GOLD or DIM) .. tostring(r.received) .. "|r")
 
-      if jakaja and not item.jaettu and v.koodi ~= "pass" then
-        local b = nappi(rivi, 70, 18, "Anna", function()
-          NS.Jaa(item, v.nimi)
+      if distributor and not item.awarded and r.code ~= "pass" then
+        local b = button(row, 70, 18, "Anna", function()
+          NS.Award(item, r.name)
         end)
         b:SetPoint("TOPRIGHT", -8, -1)
       end
@@ -731,561 +734,569 @@ local function piirraLoot()
     end
   end
 
-  local puuttuu = NS.Vastaamatta(item)
-  if #puuttuu > 0 and not item.jaettu and kaikki then
-    local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
-    rivi:SetPoint("TOPLEFT", 0, y - 6)
-    rivi:SetPoint("TOPRIGHT", 0, y - 6)
-    rivi:SetHeight(30)
-    teksti(rivi, "GameFontDisableSmall", 8, 0,
-      ("odottaa %d vastausta: %s%s"):format(#puuttuu,
-        table.concat(puuttuu, ", ", 1, math.min(6, #puuttuu)),
-        #puuttuu > 6 and ", …" or ""))
+  local missing = NS.NotResponded(item)
+  if #missing > 0 and not item.awarded and showAll then
+    local row = addChild(content, CreateFrame("Frame", nil, content))
+    row:SetPoint("TOPLEFT", 0, y - 6)
+    row:SetPoint("TOPRIGHT", 0, y - 6)
+    row:SetHeight(30)
+    label(row, "GameFontDisableSmall", 8, 0,
+      ("odottaa %d vastausta: %s%s"):format(#missing,
+        table.concat(missing, ", ", 1, math.min(6, #missing)),
+        #missing > 6 and ", …" or ""))
     y = y - 36
   end
 
-  y = piirraJaetut(sisalto, y)
+  y = drawAwarded(content, y)
 
-  sisalto:SetHeight(math.max(1, -y))
+  content:SetHeight(math.max(1, -y))
 end
 
 --------------------------------------------------------------------------
--- Näkymä: Kauppa
+-- View: Trade
 --------------------------------------------------------------------------
 
---- Luovutusta odottavat itemit.
+--- Items waiting to be handed over.
 ---
---- Addon ei voi antaa laukussa olevaa itemia koodista kasin, mutta se
---- tayttaa kauppaikkunan kun lootmaster avaa kaupan voittajan kanssa.
---- Tama lista on se mika on viela antamatta.
-local function piirraKauppa()
-  local kehys = nakymat.kauppa
+--- The addon cannot give an item away from a bag, but it fills the trade
+--- window when the master opens a trade with a winner. This list is what
+--- is still undelivered.
+local function drawTrade()
+  local frame = views.trade
 
-  if not kehys.rakennettu then
-    kehys.rakennettu = true
+  if not frame.built then
+    frame.built = true
 
-    kehys.ohje = kehys:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    kehys.ohje:SetPoint("TOPLEFT", 4, -4)
-    kehys.ohje:SetPoint("TOPRIGHT", -4, -4)
-    kehys.ohje:SetJustifyH("LEFT")
+    frame.info = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    frame.info:SetPoint("TOPLEFT", 4, -4)
+    frame.info:SetPoint("TOPRIGHT", -4, -4)
+    frame.info:SetJustifyH("LEFT")
 
-    kehys.vieritys = teeVieritys(kehys, "LootPrioKauppaScroll")
-    kehys.vieritys:SetPoint("TOPLEFT", 0, -38)
-    kehys.vieritys:SetPoint("BOTTOMRIGHT", -26, 30)
+    frame.scroll = makeScroll(frame, "LootPrioTradeScroll")
+    frame.scroll:SetPoint("TOPLEFT", 0, -38)
+    frame.scroll:SetPoint("BOTTOMRIGHT", -26, 30)
 
-    local siivoa = nappi(kehys, 150, 22, "Siivoa toimitetut", function()
-      local n = NS.SiivoaKaupat()
-      NS.Tulosta(("%d toimitettua riviä poistettu."):format(n))
+    local tidy = button(frame, 150, 22, "Siivoa toimitetut", function()
+      local n = NS.ClearDeliveredTrades()
+      NS.Print(("%d toimitettua riviä poistettu."):format(n))
     end)
-    siivoa:SetPoint("BOTTOMLEFT", 0, 4)
+    tidy:SetPoint("BOTTOMLEFT", 0, 4)
   end
 
-  local jono = NS.OdottavatKaupat()
+  local queue = NS.PendingTrades()
 
-  kehys.ohje:SetText(("Luovuttamatta: %s%d|r\nAvaa kauppa pelaajan kanssa — "
-    .. "itemit asettuvat paikoilleen itsestään."):format(KULTA, #jono))
+  frame.info:SetText(("Luovuttamatta: %s%d|r\nAvaa kauppa pelaajan kanssa — "
+    .. "itemit asettuvat paikoilleen itsestään."):format(GOLD, #queue))
 
-  local sisalto = kehys.vieritys.sisalto
-  tyhjenna(sisalto)
-  sisalto:SetWidth(kehys:GetWidth() - 26)
+  local content = frame.scroll.content
+  clear(content)
+  content:SetWidth(frame:GetWidth() - 26)
 
   local y = -4
 
-  if #jono == 0 then
-    local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
-    rivi:SetPoint("TOPLEFT", 0, y)
-    teksti(rivi, "GameFontDisableSmall", 4, 0,
-      "Ei luovuttamattomia itemeitä.")
-    sisalto:SetHeight(30)
+  if #queue == 0 then
+    local row = addChild(content, CreateFrame("Frame", nil, content))
+    row:SetPoint("TOPLEFT", 0, y)
+    label(row, "GameFontDisableSmall", 4, 0, "Ei luovuttamattomia itemeitä.")
+    content:SetHeight(30)
     return
   end
 
-  local otsikko = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
-  otsikko:SetPoint("TOPLEFT", 0, y)
-  teksti(otsikko, "GameFontNormalSmall", 4, 0, "ITEM")
-  teksti(otsikko, "GameFontNormalSmall", 200, 0, "SAAJA")
-  teksti(otsikko, "GameFontNormalSmall", 300, 0, "LAUKUSSA")
+  local header = addChild(content, CreateFrame("Frame", nil, content))
+  header:SetPoint("TOPLEFT", 0, y)
+  label(header, "GameFontNormalSmall", 4, 0, "ITEM")
+  label(header, "GameFontNormalSmall", 200, 0, "SAAJA")
+  label(header, "GameFontNormalSmall", 300, 0, "LAUKUSSA")
   y = y - 18
 
-  -- Onko item oikeasti laukussa. Jos ei ole, kauppaikkuna jaa tyhjaksi -
-  -- ja syy on parempi nahda tassa kuin kaupan auettua.
-  local laukuissa = {}
-  for _, item in ipairs(NS.LaukkujenItemit(0)) do
-    laukuissa[item.itemId] = true
+  -- Is the item really in a bag. If not, the trade window would stay
+  -- empty — and the reason is better seen here than after it opens.
+  local inBags = {}
+  for _, item in ipairs(NS.BagItems(0)) do
+    inBags[item.itemId] = true
   end
 
-  for _, r in ipairs(jono) do
-    local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
-    rivi:SetPoint("TOPLEFT", 0, y)
-    rivi:SetPoint("TOPRIGHT", 0, y)
-    rivi:SetHeight(18)
+  for _, entry in ipairs(queue) do
+    local row = addChild(content, CreateFrame("Frame", nil, content))
+    row:SetPoint("TOPLEFT", 0, y)
+    row:SetPoint("TOPRIGHT", 0, y)
+    row:SetHeight(18)
 
-    local nimi = r.itemNimi
-    if not nimi and r.itemId then nimi = GetItemInfo(r.itemId) end
-    nimi = nimi or ("item " .. tostring(r.itemId))
-    if nimi:len() > 28 then nimi = nimi:sub(1, 27) .. "…" end
+    local name = entry.itemName
+    if not name and entry.itemId then name = GetItemInfo(entry.itemId) end
+    name = name or ("item " .. tostring(entry.itemId))
+    if name:len() > 28 then name = name:sub(1, 27) .. "…" end
 
-    teksti(rivi, "GameFontHighlightSmall", 4, 0, nimi)
-    nimiAlue(rivi, nimi, r.itemId, r.linkki)
-    teksti(rivi, "GameFontHighlightSmall", 200, 0, r.nimi or "?")
-    teksti(rivi, "GameFontHighlightSmall", 300, 0,
-      laukuissa[r.itemId] and (OK .. "kyllä|r") or (VIRHE .. "ei|r"))
+    label(row, "GameFontHighlightSmall", 4, 0, name)
+    nameArea(row, name, entry.itemId, entry.link)
+    label(row, "GameFontHighlightSmall", 200, 0, entry.name or "?")
+    label(row, "GameFontHighlightSmall", 300, 0,
+      inBags[entry.itemId] and (OK .. "kyllä|r") or (BAD .. "ei|r"))
 
-    -- Kaupan ulkopuolella annettu item pitaa voida merkita kasin: addon
-    -- nakee vain laukkujen muutokset omassa kaupassa.
-    local b = nappi(rivi, 80, 18, "Annettu", function()
-      NS.MerkitseToimitetuksi(r.indeksi)
+    -- An item handed over outside a trade has to be markable by hand: the
+    -- addon only sees bag changes in its own trade.
+    local b = button(row, 80, 18, "Annettu", function()
+      NS.MarkDelivered(entry.index)
     end)
     b:SetPoint("TOPRIGHT", -8, 0)
 
     y = y - 18
   end
 
-  sisalto:SetHeight(math.max(1, -y))
+  content:SetHeight(math.max(1, -y))
 end
 
 --------------------------------------------------------------------------
--- Näkymä: Jäsenet
+-- View: Members
 --------------------------------------------------------------------------
 
---- Addonin tila yhdelle pelaajalle: teksti ja vari.
+--- One player's addon status: text and colour.
 ---
---- Kolme eri tilaa, koska ne vaativat eri toimen: puuttuva addon pitaa
---- asentaa, vanha paivittaa, ja tuomaton vienti tuoda. Yksi yhteinen
---- "ei vastannut" ei kerro kummasta on kyse.
-local function addonTila(nimi)
-  local a = NS.addonit and NS.addonit[nimi]
+--- Three distinct states, because each needs a different action: a
+--- missing addon has to be installed, an old one updated, and an
+--- unimported export imported. One shared "did not answer" would not say
+--- which it is.
+local function addonStatus(name)
+  local entry = NS.addons and NS.addons[name]
 
-  if not a then return HIMMEA .. "—|r" end
-  if NS.VersioVanhempi(a.versio, NS.VERSIO) then
-    return VIRHE .. "v" .. a.versio .. "|r"
+  if not entry then return DIM .. "—|r" end
+  if NS.VersionOlder(entry.version, NS.VERSION) then
+    return BAD .. "v" .. entry.version .. "|r"
   end
-  if a.profiileja == 0 then return VIRHE .. "ei dataa|r" end
+  if entry.profileCount == 0 then return BAD .. "ei dataa|r" end
 
-  return OK .. "v" .. a.versio .. "|r"
+  return OK .. "v" .. entry.version .. "|r"
 end
 
-local function piirraJasenet()
-  local kehys = nakymat.jasenet
+local function drawMembers()
+  local frame = views.members
 
-  if not kehys.rakennettu then
-    kehys.rakennettu = true
+  if not frame.built then
+    frame.built = true
 
-    kehys.vieritys = teeVieritys(kehys, "LootPrioJasenScroll")
-    kehys.vieritys:SetPoint("TOPLEFT", 0, 0)
-    kehys.vieritys:SetPoint("BOTTOMRIGHT", -26, 28)
+    frame.scroll = makeScroll(frame, "LootPrioMemberScroll")
+    frame.scroll:SetPoint("TOPLEFT", 0, 0)
+    frame.scroll:SetPoint("BOTTOMRIGHT", -26, 28)
 
-    local tarkista = nappi(kehys, 150, 22, "Tarkista addonit", function()
-      NS.PyydaVersiot()
-      NS.Tulosta("kysytty. Vastaukset saapuvat parin sekunnin kuluessa.")
+    local check = button(frame, 150, 22, "Tarkista addonit", function()
+      NS.AskVersions()
+      NS.Print("kysytty. Vastaukset saapuvat parin sekunnin kuluessa.")
     end)
-    tarkista:SetPoint("BOTTOMLEFT", 0, 0)
+    check:SetPoint("BOTTOMLEFT", 0, 0)
 
-    kehys.selite = kehys:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-    kehys.selite:SetPoint("BOTTOMLEFT", 158, 6)
-    kehys.selite:SetPoint("BOTTOMRIGHT", -4, 6)
-    kehys.selite:SetJustifyH("LEFT")
+    frame.note = frame:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+    frame.note:SetPoint("BOTTOMLEFT", 158, 6)
+    frame.note:SetPoint("BOTTOMRIGHT", -4, 6)
+    frame.note:SetJustifyH("LEFT")
   end
 
-  local sisalto = kehys.vieritys.sisalto
-  tyhjenna(sisalto)
-  sisalto:SetWidth(kehys:GetWidth() - 26)
+  local content = frame.scroll.content
+  clear(content)
+  content:SetWidth(frame:GetWidth() - 26)
 
-  local jasenet = NS.Jasenet()
+  local members = NS.Members()
   local y = -4
 
-  if #jasenet == 0 then
-    local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
-    rivi:SetPoint("TOPLEFT", 0, y)
-    teksti(rivi, "GameFontDisableSmall", 4, 0,
+  if #members == 0 then
+    local row = addChild(content, CreateFrame("Frame", nil, content))
+    row:SetPoint("TOPLEFT", 0, y)
+    label(row, "GameFontDisableSmall", 4, 0,
       "Ei tuotuja profiileja. Tuonti-välilehdeltä.")
-    sisalto:SetHeight(30)
-    kehys.selite:SetText("")
+    content:SetHeight(30)
+    frame.note:SetText("")
     return
   end
 
-  local raidissa = NS.RaidinJasenet()
+  local inRaid = NS.RaidMembers()
 
-  local otsikko = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
-  otsikko:SetPoint("TOPLEFT", 0, y)
-  teksti(otsikko, "GameFontNormalSmall", 4, 0, "HAHMO")
-  teksti(otsikko, "GameFontNormalSmall", 150, 0, "VALINNAT")
-  teksti(otsikko, "GameFontNormalSmall", 215, 0, "SAATU")
-  teksti(otsikko, "GameFontNormalSmall", 280, 0, "ADDON")
+  local header = addChild(content, CreateFrame("Frame", nil, content))
+  header:SetPoint("TOPLEFT", 0, y)
+  label(header, "GameFontNormalSmall", 4, 0, "HAHMO")
+  label(header, "GameFontNormalSmall", 150, 0, "VALINNAT")
+  label(header, "GameFontNormalSmall", 215, 0, "SAATU")
+  label(header, "GameFontNormalSmall", 280, 0, "ADDON")
   y = y - 18
 
-  local puuttuu = 0
+  local withoutAddon = 0
 
-  for _, j in ipairs(jasenet) do
-    local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
-    rivi:SetPoint("TOPLEFT", 0, y)
-    rivi:SetPoint("TOPRIGHT", 0, y)
-    rivi:SetHeight(16)
+  for _, member in ipairs(members) do
+    local row = addChild(content, CreateFrame("Frame", nil, content))
+    row:SetPoint("TOPLEFT", 0, y)
+    row:SetPoint("TOPRIGHT", 0, y)
+    row:SetHeight(16)
 
-    -- Paikalla oleva erottuu: lootmasteria kiinnostaa kuka on nyt mukana.
-    local paikalla = raidissa[j.nimi]
-    local vari = paikalla and "" or HIMMEA
+    -- Someone present stands out: the master cares who is here now.
+    local present = inRaid[member.name]
+    local colour = present and "" or DIM
 
-    -- Officer merkitaan: siita nakee kuka voi avata jaon, ilman etta
-    -- tarvitsee arvata kenella on oikeudet sivustolla.
-    local merkki = (NS.db.officerit and NS.db.officerit[j.nimi])
-      and (KULTA .. " \226\151\134|r") or ""
+    -- Officers are marked: it shows who can open a distribution without
+    -- having to guess who has rights on the website.
+    local marker = (NS.db.officers and NS.db.officers[member.name])
+      and (GOLD .. " \226\151\134|r") or ""
 
-    teksti(rivi, "GameFontHighlightSmall", 4, 0, vari .. j.nimi .. "|r" .. merkki)
-    teksti(rivi, "GameFontHighlightSmall", 150, 0, tostring(j.valintoja))
+    label(row, "GameFontHighlightSmall", 4, 0,
+      colour .. member.name .. "|r" .. marker)
+    label(row, "GameFontHighlightSmall", 150, 0, tostring(member.picks))
 
-    -- Sivuston luku suluissa: siita nakee onko SAATU killan historia vai
-    -- vain taman koneen kirjaamat jaot.
-    local kaikki = NS.SaatuMaara(j.nimi)
-    local sivustolta = NS.SaatuSivustolta(j.nimi)
-    teksti(rivi, "GameFontHighlightSmall", 215, 0,
-      tostring(kaikki)
-      .. (kaikki > sivustolta and (HIMMEA .. " (+" .. (kaikki - sivustolta) .. ")|r") or ""))
+    -- The website's number in brackets: it shows whether SAATU is the
+    -- guild's history or only what this machine recorded.
+    local total = NS.ReceivedCount(member.name)
+    local fromSite = NS.ReceivedFromSite(member.name)
+    label(row, "GameFontHighlightSmall", 215, 0,
+      tostring(total)
+      .. (total > fromSite and (DIM .. " (+" .. (total - fromSite) .. ")|r") or ""))
 
-    if paikalla then
-      teksti(rivi, "GameFontHighlightSmall", 280, 0, addonTila(j.nimi))
-      if not (NS.addonit and NS.addonit[j.nimi]) then puuttuu = puuttuu + 1 end
+    if present then
+      label(row, "GameFontHighlightSmall", 280, 0, addonStatus(member.name))
+      if not (NS.addons and NS.addons[member.name]) then
+        withoutAddon = withoutAddon + 1
+      end
     end
 
     y = y - 16
   end
 
-  sisalto:SetHeight(math.max(1, -y))
+  content:SetHeight(math.max(1, -y))
 
-  -- Paikalla olevat joilla ei ole profiilia lainkaan: heille jako nayttaa
-  -- rikkinaiselta, koska LootPrio-nappi on harmaa eika syy nay mistaan.
-  local ilmanProfiilia = {}
-  for nimi, online in pairs(raidissa) do
-    if online and not NS.db.profiilit[nimi] then
-      ilmanProfiilia[#ilmanProfiilia + 1] = nimi
+  -- Those present with no profile at all: for them the distribution looks
+  -- broken, because the LootPrio button is grey and nothing says why.
+  local withoutProfile = {}
+  for name, online in pairs(inRaid) do
+    if online and not NS.db.profiles[name] then
+      withoutProfile[#withoutProfile + 1] = name
     end
   end
-  table.sort(ilmanProfiilia)
+  table.sort(withoutProfile)
 
-  local osat = {}
-  if puuttuu > 0 then
-    osat[#osat + 1] = ("%s%d ilman addonia|r"):format(VIRHE, puuttuu)
+  local parts = {}
+  if withoutAddon > 0 then
+    parts[#parts + 1] = ("%s%d ilman addonia|r"):format(BAD, withoutAddon)
   end
-  if #ilmanProfiilia > 0 then
-    osat[#osat + 1] = ("%sei profiilia: %s%s|r"):format(VIRHE,
-      table.concat(ilmanProfiilia, ", ", 1, math.min(4, #ilmanProfiilia)),
-      #ilmanProfiilia > 4 and ", …" or "")
+  if #withoutProfile > 0 then
+    parts[#parts + 1] = ("%sei profiilia: %s%s|r"):format(BAD,
+      table.concat(withoutProfile, ", ", 1, math.min(4, #withoutProfile)),
+      #withoutProfile > 4 and ", …" or "")
   end
 
-  kehys.selite:SetText(table.concat(osat, "  ·  "))
+  frame.note:SetText(table.concat(parts, "  ·  "))
 end
 
 --------------------------------------------------------------------------
--- Näkymä: Historia
+-- View: History
 --------------------------------------------------------------------------
 
-local function piirraHistoria()
-  local kehys = nakymat.historia
+local function drawHistory()
+  local frame = views.history
 
-  if not kehys.rakennettu then
-    kehys.rakennettu = true
+  if not frame.built then
+    frame.built = true
 
-    kehys.ohje = kehys:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    kehys.ohje:SetPoint("TOPLEFT", 4, -4)
-    kehys.ohje:SetPoint("TOPRIGHT", -4, -4)
-    kehys.ohje:SetJustifyH("LEFT")
+    frame.info = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    frame.info:SetPoint("TOPLEFT", 4, -4)
+    frame.info:SetPoint("TOPRIGHT", -4, -4)
+    frame.info:SetJustifyH("LEFT")
 
-    -- Lista ja vientikentta ovat samassa paikassa: toinen kerrallaan.
-    -- Lista on se mita yleensa katsotaan, vienti vain raidin paatteeksi.
-    kehys.vieritys = teeVieritys(kehys, "LootPrioHistListScroll")
-    kehys.vieritys:SetPoint("TOPLEFT", 0, -24)
-    kehys.vieritys:SetPoint("BOTTOMRIGHT", -26, 30)
+    -- The list and the export box share one place, one at a time. The
+    -- list is what is usually looked at, the export only at the end of a
+    -- raid.
+    frame.scroll = makeScroll(frame, "LootPrioHistListScroll")
+    frame.scroll:SetPoint("TOPLEFT", 0, -24)
+    frame.scroll:SetPoint("BOTTOMRIGHT", -26, 30)
 
-    local vientiVieritys = CreateFrame("ScrollFrame", "LootPrioHistScroll", kehys,
+    local exportScroll = CreateFrame("ScrollFrame", "LootPrioHistScroll", frame,
       "UIPanelScrollFrameTemplate")
-    vientiVieritys:SetPoint("TOPLEFT", 0, -24)
-    vientiVieritys:SetPoint("BOTTOMRIGHT", -26, 30)
-    vientiVieritys:Hide()
-    kehys.vientiVieritys = vientiVieritys
+    exportScroll:SetPoint("TOPLEFT", 0, -24)
+    exportScroll:SetPoint("BOTTOMRIGHT", -26, 30)
+    exportScroll:Hide()
+    frame.exportScroll = exportScroll
 
-    local kentta = CreateFrame("EditBox", nil, vientiVieritys)
-    kentta:SetMultiLine(true)
-    kentta:SetFontObject(ChatFontNormal)
-    kentta:SetWidth(380)
-    kentta:SetAutoFocus(false)
-    kentta:SetMaxLetters(0)
-    kentta:SetScript("OnEscapePressed", function() paa:Hide() end)
-    vientiVieritys:SetScrollChild(kentta)
-    kehys.kentta = kentta
+    local editBox = CreateFrame("EditBox", nil, exportScroll)
+    editBox:SetMultiLine(true)
+    editBox:SetFontObject(ChatFontNormal)
+    editBox:SetWidth(380)
+    editBox:SetAutoFocus(false)
+    editBox:SetMaxLetters(0)
+    editBox:SetScript("OnEscapePressed", function() main:Hide() end)
+    exportScroll:SetScrollChild(editBox)
+    frame.editBox = editBox
 
-    kehys.vie = nappi(kehys, 150, 22, "Luo vienti sivustolle", function()
-      if kehys.vientiVieritys:IsShown() then
-        kehys.vientiVieritys:Hide()
-        kehys.vieritys:Show()
-        kehys.vie:SetText("Luo vienti sivustolle")
+    frame.exportButton = button(frame, 150, 22, "Luo vienti sivustolle", function()
+      if frame.exportScroll:IsShown() then
+        frame.exportScroll:Hide()
+        frame.scroll:Show()
+        frame.exportButton:SetText("Luo vienti sivustolle")
         return
       end
 
-      kehys.vieritys:Hide()
-      kehys.vientiVieritys:Show()
-      kehys.vie:SetText("Takaisin listaan")
-      kehys.kentta:SetText(NS.HistoriaTeksti())
-      kehys.kentta:HighlightText()
-      kehys.kentta:SetFocus()
-      NS.Tulosta("kopioi teksti Ctrl+C ja liita sivuston ylläpitoon.")
+      frame.scroll:Hide()
+      frame.exportScroll:Show()
+      frame.exportButton:SetText("Takaisin listaan")
+      frame.editBox:SetText(NS.HistoryText())
+      frame.editBox:HighlightText()
+      frame.editBox:SetFocus()
+      NS.Print("kopioi teksti Ctrl+C ja liitä sivuston ylläpitoon.")
     end)
-    kehys.vie:SetPoint("BOTTOMLEFT", 0, 4)
+    frame.exportButton:SetPoint("BOTTOMLEFT", 0, 4)
 
-    local tyhjennaNappi = nappi(kehys, 110, 22, "Tyhjennä", function()
-      NS.db.historia = {}
-      kehys.kentta:SetText("")
-      NS.PaivitaNakyma("historia")
-      NS.Tulosta("historia tyhjennetty.")
+    local clearButton = button(frame, 110, 22, "Tyhjennä", function()
+      NS.db.history = {}
+      frame.editBox:SetText("")
+      NS.RefreshView("history")
+      NS.Print("historia tyhjennetty.")
     end)
-    tyhjennaNappi:SetPoint("BOTTOMLEFT", 156, 4)
+    clearButton:SetPoint("BOTTOMLEFT", 156, 4)
   end
 
-  -- Instanssi nakyviin: sivusto nimeaa lokin sen mukaan, ja jos tassa
-  -- lukee vaara paikka, vienti kannattaa tehda ennen seuraavaa raidia.
-  local alue, koko = NS.Instanssi()
-  local paikka = alue and (alue .. (koko > 0 and (" " .. koko .. "-man") or ""))
+  -- The instance, visible: the website names the log from it, and if the
+  -- wrong place is shown here the export should be made before the next
+  -- raid.
+  local zone, size = NS.Instance()
+  local place = zone and (zone .. (size > 0 and (" " .. size .. "-man") or ""))
 
-  kehys.ohje:SetText(("Jaettuja itemeitä: %s%d|r   %s"):format(
-    KULTA, #NS.db.historia,
-    paikka and (HIMMEA .. paikka .. "|r") or ""))
+  frame.info:SetText(("Jaettuja itemeitä: %s%d|r   %s"):format(
+    GOLD, #NS.db.history,
+    place and (DIM .. place .. "|r") or ""))
 
-  local sisalto = kehys.vieritys.sisalto
-  tyhjenna(sisalto)
-  sisalto:SetWidth(kehys:GetWidth() - 26)
+  local content = frame.scroll.content
+  clear(content)
+  content:SetWidth(frame:GetWidth() - 26)
 
   local y = -4
 
-  if #NS.db.historia == 0 then
-    local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
-    rivi:SetPoint("TOPLEFT", 0, y)
-    teksti(rivi, "GameFontDisableSmall", 4, 0,
-      "Ei jaettuja itemeitä. Jaetut näkyvät täällä heti kun ne on assignattu.")
-    sisalto:SetHeight(30)
+  if #NS.db.history == 0 then
+    local row = addChild(content, CreateFrame("Frame", nil, content))
+    row:SetPoint("TOPLEFT", 0, y)
+    label(row, "GameFontDisableSmall", 4, 0,
+      "Ei jaettuja itemeitä. Jaetut näkyvät täällä heti kun ne on annettu.")
+    content:SetHeight(30)
     return
   end
 
-  local otsikko = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
-  otsikko:SetPoint("TOPLEFT", 0, y)
-  teksti(otsikko, "GameFontNormalSmall", 4, 0, "ITEM")
-  teksti(otsikko, "GameFontNormalSmall", 190, 0, "SAAJA")
-  teksti(otsikko, "GameFontNormalSmall", 300, 0, "PERUSTE")
-  teksti(otsikko, "GameFontNormalSmall", 390, 0, "ROLL")
+  local header = addChild(content, CreateFrame("Frame", nil, content))
+  header:SetPoint("TOPLEFT", 0, y)
+  label(header, "GameFontNormalSmall", 4, 0, "ITEM")
+  label(header, "GameFontNormalSmall", 190, 0, "SAAJA")
+  label(header, "GameFontNormalSmall", 300, 0, "PERUSTE")
+  label(header, "GameFontNormalSmall", 390, 0, "ROLL")
   y = y - 18
 
-  -- Uusin ylos: viimeksi jaettu on se mita yleensa tarkistetaan.
-  for i = #NS.db.historia, 1, -1 do
-    local r = NS.db.historia[i]
+  -- Newest at the top: the most recent award is what usually gets checked.
+  for i = #NS.db.history, 1, -1 do
+    local entry = NS.db.history[i]
 
-    local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
-    rivi:SetPoint("TOPLEFT", 0, y)
-    rivi:SetPoint("TOPRIGHT", 0, y)
-    rivi:SetHeight(16)
+    local row = addChild(content, CreateFrame("Frame", nil, content))
+    row:SetPoint("TOPLEFT", 0, y)
+    row:SetPoint("TOPRIGHT", 0, y)
+    row:SetHeight(16)
 
-    local nimi = r.itemNimi
-    if not nimi and r.itemId then nimi = GetItemInfo(r.itemId) end
-    nimi = nimi or ("item " .. tostring(r.itemId))
-    if nimi:len() > 26 then nimi = nimi:sub(1, 25) .. "…" end
+    local name = entry.itemName
+    if not name and entry.itemId then name = GetItemInfo(entry.itemId) end
+    name = name or ("item " .. tostring(entry.itemId))
+    if name:len() > 26 then name = name:sub(1, 25) .. "…" end
 
-    teksti(rivi, "GameFontHighlightSmall", 4, 0, nimi)
-    nimiAlue(rivi, nimi, r.itemId)
-    teksti(rivi, "GameFontHighlightSmall", 190, 0, r.nimi or "?")
+    label(row, "GameFontHighlightSmall", 4, 0, name)
+    nameArea(row, name, entry.itemId)
+    label(row, "GameFontHighlightSmall", 190, 0, entry.name or "?")
 
-    -- Peruste eli "milla napilla": sama vari kuin vastausnapissa.
-    local vast = r.koodi and NS.VASTAUS[r.koodi]
-    teksti(rivi, "GameFontHighlightSmall", 300, 0,
-      vast and (vast.vari .. vast.nimi .. "|r") or (HIMMEA .. "—|r"))
+    -- The reason, i.e. "on which button": the same colour as the response
+    -- button.
+    local response = entry.response and NS.RESPONSE[entry.response]
+    label(row, "GameFontHighlightSmall", 300, 0,
+      response and (response.colour .. response.name .. "|r") or (DIM .. "—|r"))
 
-    teksti(rivi, "GameFontHighlightSmall", 390, 0,
-      r.luku and (KULTA .. tostring(r.luku) .. "|r") or (HIMMEA .. "—|r"))
+    label(row, "GameFontHighlightSmall", 390, 0,
+      entry.roll and (GOLD .. tostring(entry.roll) .. "|r") or (DIM .. "—|r"))
 
     y = y - 16
   end
 
-  sisalto:SetHeight(math.max(1, -y))
+  content:SetHeight(math.max(1, -y))
 end
 
 --------------------------------------------------------------------------
--- Näkymä: Tuonti
+-- View: Import
 --------------------------------------------------------------------------
 
-local function piirraTuonti()
-  local kehys = nakymat.tuonti
+local function drawImport()
+  local frame = views.import
 
-  if not kehys.rakennettu then
-    kehys.rakennettu = true
+  if not frame.built then
+    frame.built = true
 
-    local ohje = kehys:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    ohje:SetPoint("TOPLEFT", 4, -4)
-    ohje:SetPoint("TOPRIGHT", -4, -4)
-    ohje:SetJustifyH("LEFT")
-    ohje:SetText("Liitä sivuston \"Vienti addoniin\" -teksti (Ctrl+V) ja paina Tuo.")
+    local info = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    info:SetPoint("TOPLEFT", 4, -4)
+    info:SetPoint("TOPRIGHT", -4, -4)
+    info:SetJustifyH("LEFT")
+    info:SetText("Liitä sivuston \"Vienti addoniin\" -teksti (Ctrl+V) ja paina Tuo.")
 
-    local vieritys = CreateFrame("ScrollFrame", "LootPrioTuontiScroll", kehys,
+    local scroll = CreateFrame("ScrollFrame", "LootPrioImportScroll", frame,
       "UIPanelScrollFrameTemplate")
-    vieritys:SetPoint("TOPLEFT", 0, -34)
-    vieritys:SetPoint("BOTTOMRIGHT", -26, 30)
+    scroll:SetPoint("TOPLEFT", 0, -34)
+    scroll:SetPoint("BOTTOMRIGHT", -26, 30)
 
-    local kentta = CreateFrame("EditBox", nil, vieritys)
-    kentta:SetMultiLine(true)
-    kentta:SetFontObject(ChatFontNormal)
-    kentta:SetWidth(380)
-    kentta:SetAutoFocus(false)
-    kentta:SetMaxLetters(0)
-    kentta:SetScript("OnEscapePressed", function() paa:Hide() end)
-    vieritys:SetScrollChild(kentta)
-    kehys.kentta = kentta
+    local editBox = CreateFrame("EditBox", nil, scroll)
+    editBox:SetMultiLine(true)
+    editBox:SetFontObject(ChatFontNormal)
+    editBox:SetWidth(380)
+    editBox:SetAutoFocus(false)
+    editBox:SetMaxLetters(0)
+    editBox:SetScript("OnEscapePressed", function() main:Hide() end)
+    scroll:SetScrollChild(editBox)
+    frame.editBox = editBox
 
-    kehys.tila = kehys:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    kehys.tila:SetPoint("BOTTOMLEFT", 120, 10)
+    frame.status = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    frame.status:SetPoint("BOTTOMLEFT", 120, 10)
 
-    local tuo = nappi(kehys, 100, 22, "Tuo", function()
-      local data, virhe = NS.Tuo(kehys.kentta:GetText())
+    local importButton = button(frame, 100, 22, "Tuo", function()
+      local data, err = NS.Import(frame.editBox:GetText())
       if not data then
-        kehys.tila:SetText(VIRHE .. (virhe or "Tuonti epäonnistui.") .. "|r")
+        frame.status:SetText(BAD .. (err or "Tuonti epäonnistui.") .. "|r")
         return
       end
-      kehys.tila:SetText(("%s%s — %d hahmoa.|r"):format(OK, data.raidinNimi, data.hahmoja))
-      kehys.kentta:SetText("")
-      paivitaTila()
-      naytaNakyma("jasenet")
+      frame.status:SetText(("%s%s — %d hahmoa.|r"):format(
+        OK, data.raidName, data.characterCount))
+      frame.editBox:SetText("")
+      refreshStatus()
+      showView("members")
     end)
-    tuo:SetPoint("BOTTOMLEFT", 0, 4)
+    importButton:SetPoint("BOTTOMLEFT", 0, 4)
   end
 
-  kehys.kentta:SetFocus()
+  frame.editBox:SetFocus()
 end
 
 --------------------------------------------------------------------------
--- Näkymä: Asetukset
+-- View: Settings
 --------------------------------------------------------------------------
 
-local function piirraAsetukset()
-  local kehys = nakymat.asetukset
+local function drawSettings()
+  local frame = views.settings
 
-  if not kehys.rakennettu then
-    kehys.rakennettu = true
+  if not frame.built then
+    frame.built = true
 
-    local valinta = CreateFrame("CheckButton", "LootPrioRollitRaidille", kehys,
+    local visibility = CreateFrame("CheckButton", "LootPrioRaidRolls", frame,
       "UICheckButtonTemplate")
-    valinta:SetPoint("TOPLEFT", 2, -8)
-    valinta:SetSize(24, 24)
-    _G[valinta:GetName() .. "Text"]:SetText("Myös raiderit näkevät kaikki vastaukset")
-    valinta:SetScript("OnClick", function(self)
-      NS.db.rollienNakyvyys = self:GetChecked() and "raid" or "officers"
-      paivitaTila()
+    visibility:SetPoint("TOPLEFT", 2, -8)
+    visibility:SetSize(24, 24)
+    _G[visibility:GetName() .. "Text"]:SetText(
+      "Myös raiderit näkevät kaikki vastaukset")
+    visibility:SetScript("OnClick", function(self)
+      NS.db.rollVisibility = self:GetChecked() and "raid" or "officers"
+      refreshStatus()
     end)
-    kehys.valinta = valinta
+    frame.visibility = visibility
 
-    local selite = kehys:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-    selite:SetPoint("TOPLEFT", 6, -36)
-    selite:SetPoint("TOPRIGHT", -6, -36)
-    selite:SetJustifyH("LEFT")
-    selite:SetText("Pois päältä raideri näkee oman vastauksensa ja sen mitä "
+    local note = frame:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+    note:SetPoint("TOPLEFT", 6, -36)
+    note:SetPoint("TOPRIGHT", -6, -36)
+    note:SetJustifyH("LEFT")
+    note:SetText("Pois päältä raideri näkee oman vastauksensa ja sen mitä "
       .. "on jo jaettu — kuka sai ja millä napilla. Officerit näkevät kaikkien "
       .. "vastaukset, jotta itemistä voi keskustella ennen antamista. Asetus "
       .. "koskee vain sinun avaamiasi jakoja, ja se on näkyvyysvalinta eikä "
       .. "salaisuus: tiedot kulkevat raidikanavalla joka tapauksessa.")
 
-    local ilmoita = CreateFrame("CheckButton", "LootPrioIlmoita", kehys,
+    local announce = CreateFrame("CheckButton", "LootPrioAnnounce", frame,
       "UICheckButtonTemplate")
-    ilmoita:SetPoint("TOPLEFT", 2, -76)
-    ilmoita:SetSize(24, 24)
-    _G[ilmoita:GetName() .. "Text"]:SetText("Ilmoita voittaja raidichattiin")
-    ilmoita:SetScript("OnClick", function(self)
-      NS.db.ilmoitaVoittaja = self:GetChecked() and true or false
+    announce:SetPoint("TOPLEFT", 2, -76)
+    announce:SetSize(24, 24)
+    _G[announce:GetName() .. "Text"]:SetText("Ilmoita voittaja raidichattiin")
+    announce:SetScript("OnClick", function(self)
+      NS.db.announceWinner = self:GetChecked() and true or false
     end)
-    kehys.ilmoita = ilmoita
+    frame.announce = announce
 
-    local kauppa = CreateFrame("CheckButton", "LootPrioTaytaKauppa", kehys,
+    local trade = CreateFrame("CheckButton", "LootPrioAutoTrade", frame,
       "UICheckButtonTemplate")
-    kauppa:SetPoint("TOPLEFT", 2, -98)
-    kauppa:SetSize(24, 24)
-    _G[kauppa:GetName() .. "Text"]:SetText("Täytä kauppaikkuna itsestään")
-    kauppa:SetScript("OnClick", function(self)
-      NS.db.taytaKauppa = self:GetChecked() and true or false
+    trade:SetPoint("TOPLEFT", 2, -98)
+    trade:SetSize(24, 24)
+    _G[trade:GetName() .. "Text"]:SetText("Täytä kauppaikkuna itsestään")
+    trade:SetScript("OnClick", function(self)
+      NS.db.autoFillTrade = self:GetChecked() and true or false
     end)
-    kehys.kauppa = kauppa
+    frame.trade = trade
 
-    -- Laaturaja ratkaisee mita laukuista tarjotaan jaettavaksi.
-    local laatuSelite = kehys:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    laatuSelite:SetPoint("TOPLEFT", 6, -124)
-    laatuSelite:SetText("Jaettavien vähimmäislaatu:")
+    -- The quality limit decides what the bags offer for distribution.
+    local qualityLabel = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    qualityLabel:SetPoint("TOPLEFT", 6, -124)
+    qualityLabel:SetText("Jaettavien vähimmäislaatu:")
 
-    local laatuNapit = {
-      { laatu = 2, nimi = "Vihreä" },
-      { laatu = 3, nimi = "Sininen" },
-      { laatu = 4, nimi = "Violetti" },
+    local qualities = {
+      { quality = 2, name = "Vihreä" },
+      { quality = 3, name = "Sininen" },
+      { quality = 4, name = "Violetti" },
     }
 
-    kehys.laatuNapit = {}
-    local lx = 4
-    for _, l in ipairs(laatuNapit) do
-      local b = nappi(kehys, 74, 22, l.nimi, function()
-        NS.db.laukkuLaatu = l.laatu
-        piirraAsetukset()
+    frame.qualityButtons = {}
+    local qx = 4
+    for _, entry in ipairs(qualities) do
+      local b = button(frame, 74, 22, entry.name, function()
+        NS.db.bagQuality = entry.quality
+        drawSettings()
       end)
-      b:SetPoint("TOPLEFT", lx, -144)
-      kehys.laatuNapit[l.laatu] = b
-      lx = lx + 78
+      b:SetPoint("TOPLEFT", qx, -144)
+      frame.qualityButtons[entry.quality] = b
+      qx = qx + 78
     end
 
-    -- Vastausaika ei pakota mitaan: se vaihtaa kellon varin, ja lootmaster
-    -- paattaa itse milloin odottaminen ei enaa tuota vastauksia.
-    local aikaSelite = kehys:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    aikaSelite:SetPoint("TOPLEFT", 6, -176)
-    aikaSelite:SetText("Muistuta vastauksista:")
+    -- The response time forces nothing: it changes the clock's colour,
+    -- and the master decides when waiting stops producing responses.
+    local timeLabel = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    timeLabel:SetPoint("TOPLEFT", 6, -176)
+    timeLabel:SetText("Muistuta vastauksista:")
 
-    local ajat = { 60, 90, 120 }
-    kehys.aikaNapit = {}
-    local ax = 4
-    for _, s in ipairs(ajat) do
-      local b = nappi(kehys, 74, 22, s .. " s", function()
-        NS.db.vastausAika = s
-        piirraAsetukset()
+    local times = { 60, 90, 120 }
+    frame.timeButtons = {}
+    local tx = 4
+    for _, seconds in ipairs(times) do
+      local b = button(frame, 74, 22, seconds .. " s", function()
+        NS.db.responseTime = seconds
+        drawSettings()
       end)
-      b:SetPoint("TOPLEFT", ax, -196)
-      kehys.aikaNapit[s] = b
-      ax = ax + 78
+      b:SetPoint("TOPLEFT", tx, -196)
+      frame.timeButtons[seconds] = b
+      tx = tx + 78
     end
 
-    local testi = nappi(kehys, 160, 24, "Käynnistä testi", function()
-      if NS.AloitaTesti() then naytaNakyma("loot") end
+    local test = button(frame, 160, 24, "Käynnistä testi", function()
+      if NS.StartTest() then showView("loot") end
     end)
-    testi:SetPoint("TOPLEFT", 4, -228)
+    test:SetPoint("TOPLEFT", 4, -228)
 
-    local testiSelite = kehys:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-    testiSelite:SetPoint("TOPLEFT", 6, -256)
-    testiSelite:SetPoint("TOPRIGHT", -6, -256)
-    testiSelite:SetJustifyH("LEFT")
-    testiSelite:SetText("Tekee neljä kuviteltua loottia tuoduista valinnoista ja "
-      .. "arpoo niihin vastaukset. Assign kirjaa historiaan mutta ei koske "
+    local testNote = frame:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+    testNote:SetPoint("TOPLEFT", 6, -256)
+    testNote:SetPoint("TOPRIGHT", -6, -256)
+    testNote:SetJustifyH("LEFT")
+    testNote:SetText("Tekee neljä kuviteltua loottia tuoduista valinnoista ja "
+      .. "arpoo niihin vastaukset. Anna kirjaa historiaan mutta ei koske "
       .. "pelin loottiin eikä lähetä mitään raidille.")
 
-    local tyhjennaProfiilit = nappi(kehys, 160, 24, "Poista profiilit", function()
-      NS.db.profiilit = {}
-      NS.db.raidinNimi = nil
-      NS.db.tuotu = nil
-      paivitaTila()
-      naytaNakyma("jasenet")
+    local clearProfiles = button(frame, 160, 24, "Poista profiilit", function()
+      NS.db.profiles = {}
+      NS.db.raidName = nil
+      NS.db.importedAt = nil
+      refreshStatus()
+      showView("members")
     end)
-    tyhjennaProfiilit:SetPoint("TOPLEFT", 4, -300)
+    clearProfiles:SetPoint("TOPLEFT", 4, -300)
   end
 
-  kehys.valinta:SetChecked(NS.db.rollienNakyvyys == "raid")
-  kehys.ilmoita:SetChecked(NS.db.ilmoitaVoittaja)
-  kehys.kauppa:SetChecked(NS.db.taytaKauppa ~= false)
+  frame.visibility:SetChecked(NS.db.rollVisibility == "raid")
+  frame.announce:SetChecked(NS.db.announceWinner)
+  frame.trade:SetChecked(NS.db.autoFillTrade ~= false)
 
-  -- Valittu arvo jaa pohjaan, jotta nykyinen asetus nakyy.
-  for laatu, b in pairs(kehys.laatuNapit) do
-    if laatu == (NS.db.laukkuLaatu or 3) then
+  -- The chosen value stays pushed in, so the current setting is visible.
+  for quality, b in pairs(frame.qualityButtons) do
+    if quality == (NS.db.bagQuality or 3) then
       b:LockHighlight()
     else
       b:UnlockHighlight()
     end
   end
 
-  for s, b in pairs(kehys.aikaNapit) do
-    if s == (NS.db.vastausAika or 90) then
+  for seconds, b in pairs(frame.timeButtons) do
+    if seconds == (NS.db.responseTime or 90) then
       b:LockHighlight()
     else
       b:UnlockHighlight()
@@ -1294,224 +1305,221 @@ local function piirraAsetukset()
 end
 
 --------------------------------------------------------------------------
--- Päivitys
+-- Refresh
 --------------------------------------------------------------------------
 
-function NS.PaivitaNakyma(avain)
-  avain = avain or nykyinen
-  if not paa or not paa:IsShown() then return end
+function NS.RefreshView(key)
+  key = key or currentView
+  if not main or not main:IsShown() then return end
 
-  paivitaTila()
+  refreshStatus()
 
-  if avain == "loot" then piirraLoot()
-  elseif avain == "kauppa" then piirraKauppa()
-  elseif avain == "jasenet" then piirraJasenet()
-  elseif avain == "historia" then piirraHistoria()
-  elseif avain == "tuonti" then piirraTuonti()
-  elseif avain == "asetukset" then piirraAsetukset()
+  if key == "loot" then drawLoot()
+  elseif key == "trade" then drawTrade()
+  elseif key == "members" then drawMembers()
+  elseif key == "history" then drawHistory()
+  elseif key == "import" then drawImport()
+  elseif key == "settings" then drawSettings()
   end
 end
 
--- Vanhat nimet, joita muut tiedostot kutsuvat.
-function NS.AvaaLootIkkuna() NS.Avaa("loot") end
-function NS.AvaaTuonti() NS.Avaa("tuonti") end
-function NS.PaivitaLootIkkuna() NS.PaivitaNakyma("loot") end
-function NS.PaivitaAsetusUI() NS.PaivitaNakyma(nykyinen) end
-
 --------------------------------------------------------------------------
--- Itemien valinta laukuista
+-- Picking items from the bags
 --------------------------------------------------------------------------
 
-local valinta
-local valitut = {}
+local picker
+local selected = {}
 
--- Kasin linkatut itemit. Kaikki jaettava ei ole lootmasterin laukussa:
--- item voi olla toisen pelaajan hallussa tai jo kaupattu vaarin, eika jako
--- saa olla siita kiinni.
-local manuaaliset = {}
+-- Items linked by hand. Not everything to be distributed is in the
+-- master's bags: an item may be held by another player or already traded
+-- wrongly, and the distribution must not depend on that.
+local manual = {}
 
---- Ikkuna, josta officer poimii jaettavat itemit laukuistaan.
+--- The window where an officer picks the items to distribute.
 ---
---- Lista on rajattu puettaviin ja riittavan hyviin itemeihin: ilman
---- rajausta siina olisi jokainen juomapullo ja kangaspala.
-function NS.AvaaValinta()
-  if not valinta then
-    valinta = CreateFrame("Frame", "LootPrioValinta", UIParent,
+--- The list is limited to equippable items of decent quality: without the
+--- limit it would hold every water flask and bolt of cloth.
+function NS.OpenPicker()
+  if not picker then
+    picker = CreateFrame("Frame", "LootPrioPicker", UIParent,
       "BasicFrameTemplateWithInset")
-    valinta:SetSize(460, 460)
-    valinta:SetPoint("CENTER")
-    valinta:SetMovable(true)
-    valinta:EnableMouse(true)
-    valinta:RegisterForDrag("LeftButton")
-    valinta:SetScript("OnDragStart", valinta.StartMoving)
-    valinta:SetScript("OnDragStop", valinta.StopMovingOrSizing)
-    valinta:SetClampedToScreen(true)
-    valinta.TitleText:SetText("LootPrio — valitse jaettavat")
-    tinsert(UISpecialFrames, "LootPrioValinta")
+    picker:SetSize(460, 460)
+    picker:SetPoint("CENTER")
+    picker:SetMovable(true)
+    picker:EnableMouse(true)
+    picker:RegisterForDrag("LeftButton")
+    picker:SetScript("OnDragStart", picker.StartMoving)
+    picker:SetScript("OnDragStop", picker.StopMovingOrSizing)
+    picker:SetClampedToScreen(true)
+    picker.TitleText:SetText("LootPrio — valitse jaettavat")
+    tinsert(UISpecialFrames, "LootPrioPicker")
 
-    -- Linkkikentta: shift-klikkaus itemista liittaa linkin kohdistettuun
-    -- kenttaan, joten tahan saa itemin mista tahansa - laukusta, chatista
-    -- tai toisen pelaajan viestista.
-    local linkkiOhje = valinta:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-    linkkiOhje:SetPoint("TOPLEFT", 14, -32)
-    linkkiOhje:SetText("Lisää item käsin: shift-klikkaa item kenttään ja paina Lisää.")
+    -- The link field: shift-clicking an item pastes its link into the
+    -- focused edit box, so an item can come from anywhere — a bag, chat,
+    -- or another player's message.
+    local linkHelp = picker:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+    linkHelp:SetPoint("TOPLEFT", 14, -32)
+    linkHelp:SetText("Lisää item käsin: shift-klikkaa item kenttään ja paina Lisää.")
 
-    local kentta = CreateFrame("EditBox", "LootPrioValintaKentta", valinta,
+    local editBox = CreateFrame("EditBox", "LootPrioPickerInput", picker,
       "InputBoxTemplate")
-    kentta:SetSize(300, 20)
-    kentta:SetPoint("TOPLEFT", 18, -48)
-    kentta:SetAutoFocus(false)
-    valinta.kentta = kentta
+    editBox:SetSize(300, 20)
+    editBox:SetPoint("TOPLEFT", 18, -48)
+    editBox:SetAutoFocus(false)
+    picker.editBox = editBox
 
-    local function lisaaLinkki()
-      local item = NS.LinkistaItem(kentta:GetText())
+    local function addLink()
+      local item = NS.ItemFromLink(editBox:GetText())
       if not item then
-        NS.Tulosta("kenttaan ei liitetty kelvollista item-linkkia.")
+        NS.Print("kenttään ei liitetty kelvollista item-linkkiä.")
         return
       end
 
-      manuaaliset[#manuaaliset + 1] = item
-      valitut["m:" .. #manuaaliset] = true
-      kentta:SetText("")
-      NS.PaivitaValinta()
+      manual[#manual + 1] = item
+      selected["m:" .. #manual] = true
+      editBox:SetText("")
+      NS.RefreshPicker()
     end
 
-    kentta:SetScript("OnEnterPressed", lisaaLinkki)
-    kentta:SetScript("OnEscapePressed", function(self)
+    editBox:SetScript("OnEnterPressed", addLink)
+    editBox:SetScript("OnEscapePressed", function(self)
       self:SetText("")
       self:ClearFocus()
     end)
 
-    local lisaa = nappi(valinta, 80, 22, "Lisää", lisaaLinkki)
-    lisaa:SetPoint("TOPLEFT", 326, -47)
+    local addButton = button(picker, 80, 22, "Lisää", addLink)
+    addButton:SetPoint("TOPLEFT", 326, -47)
 
-    local vieritys = teeVieritys(valinta, "LootPrioValintaScroll")
-    vieritys:SetPoint("TOPLEFT", 12, -76)
-    vieritys:SetPoint("BOTTOMRIGHT", -32, 56)
-    valinta.vieritys = vieritys
+    local scroll = makeScroll(picker, "LootPrioPickerScroll")
+    scroll:SetPoint("TOPLEFT", 12, -76)
+    scroll:SetPoint("BOTTOMRIGHT", -32, 56)
+    picker.scroll = scroll
 
-    valinta.aloita = nappi(valinta, 150, 24, "Aloita jako", function()
-      local lista = {}
+    picker.startButton = button(picker, 150, 24, "Aloita jako", function()
+      local list = {}
 
-      for i, item in ipairs(manuaaliset) do
-        if valitut["m:" .. i] then lista[#lista + 1] = item end
+      for i, item in ipairs(manual) do
+        if selected["m:" .. i] then list[#list + 1] = item end
       end
 
-      for _, item in ipairs(NS.LaukkujenItemit()) do
-        local avain = item.laukku .. ":" .. item.paikka
-        if valitut[avain] then lista[#lista + 1] = item end
+      for _, item in ipairs(NS.BagItems()) do
+        local key = item.bag .. ":" .. item.slot
+        if selected[key] then list[#list + 1] = item end
       end
 
-      if #lista == 0 then
-        NS.Tulosta("valitse ensin vahintaan yksi item.")
+      if #list == 0 then
+        NS.Print("valitse ensin vähintään yksi item.")
         return
       end
 
-      valinta:Hide()
-      NS.AvaaSessio(lista)
+      picker:Hide()
+      NS.OpenSession(list)
     end)
-    valinta.aloita:SetPoint("BOTTOMLEFT", 14, 14)
+    picker.startButton:SetPoint("BOTTOMLEFT", 14, 14)
 
-    local kaikki = nappi(valinta, 100, 24, "Valitse kaikki", function()
-      for i in ipairs(manuaaliset) do valitut["m:" .. i] = true end
-      for _, item in ipairs(NS.LaukkujenItemit()) do
-        valitut[item.laukku .. ":" .. item.paikka] = true
+    local selectAll = button(picker, 100, 24, "Valitse kaikki", function()
+      for i in ipairs(manual) do selected["m:" .. i] = true end
+      for _, item in ipairs(NS.BagItems()) do
+        selected[item.bag .. ":" .. item.slot] = true
       end
-      NS.PaivitaValinta()
+      NS.RefreshPicker()
     end)
-    kaikki:SetPoint("BOTTOMLEFT", 170, 14)
+    selectAll:SetPoint("BOTTOMLEFT", 170, 14)
 
-    local eiMitaan = nappi(valinta, 90, 24, "Tyhjennä", function()
-      wipe(valitut)
-      wipe(manuaaliset)
-      NS.PaivitaValinta()
+    local selectNone = button(picker, 90, 24, "Tyhjennä", function()
+      wipe(selected)
+      wipe(manual)
+      NS.RefreshPicker()
     end)
-    eiMitaan:SetPoint("BOTTOMLEFT", 276, 14)
+    selectNone:SetPoint("BOTTOMLEFT", 276, 14)
   end
 
-  wipe(valitut)
-  wipe(manuaaliset)
-  valinta.kentta:SetText("")
-  valinta:Show()
-  NS.PaivitaValinta()
+  wipe(selected)
+  wipe(manual)
+  picker.editBox:SetText("")
+  picker:Show()
+  NS.RefreshPicker()
 end
 
-function NS.PaivitaValinta()
-  if not valinta or not valinta:IsShown() then return end
+function NS.RefreshPicker()
+  if not picker or not picker:IsShown() then return end
 
-  local sisalto = valinta.vieritys.sisalto
-  tyhjenna(sisalto)
-  sisalto:SetWidth(400)
+  local content = picker.scroll.content
+  clear(content)
+  content:SetWidth(400)
 
-  local itemit = NS.LaukkujenItemit()
+  local items = NS.BagItems()
   local y = -4
-  local n = 0
+  local count = 0
 
-  if #itemit == 0 and #manuaaliset == 0 then
-    local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
-    rivi:SetPoint("TOPLEFT", 0, y)
-    teksti(rivi, "GameFontDisableSmall", 4, 0,
+  if #items == 0 and #manual == 0 then
+    local row = addChild(content, CreateFrame("Frame", nil, content))
+    row:SetPoint("TOPLEFT", 0, y)
+    label(row, "GameFontDisableSmall", 4, 0,
       "Laukuissa ei ole jaettavia itemeitä.\n\n"
       .. "Lista näyttää puettavat itemit joiden laatu on\n"
       .. "vähintään sininen. Rajan voi muuttaa Asetuksista.\n\n"
       .. "Voit myös linkata itemin käsin yllä olevaan kenttään.")
-    sisalto:SetHeight(84)
-    valinta.aloita:SetText("Aloita jako")
+    content:SetHeight(84)
+    picker.startButton:SetText("Aloita jako")
     return
   end
 
-  --- Yksi rivi: rasti, nimi ja kysynta. Sama muoto kasin linkatulle ja
-  --- laukusta loytyneelle, jottei jako riipu siita mista item tuli.
-  local function piirraRivi(avain, item, poistaIndeksi)
-    if valitut[avain] then n = n + 1 end
+  --- One row: a checkbox, the name and the demand. The same shape for a
+  --- hand-linked item and one found in a bag, so the distribution does
+  --- not depend on where the item came from.
+  local function drawRow(key, item, manualIndex)
+    if selected[key] then count = count + 1 end
 
-    local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
-    rivi:SetPoint("TOPLEFT", 0, y)
-    rivi:SetPoint("TOPRIGHT", 0, y)
-    rivi:SetHeight(22)
+    local row = addChild(content, CreateFrame("Frame", nil, content))
+    row:SetPoint("TOPLEFT", 0, y)
+    row:SetPoint("TOPRIGHT", 0, y)
+    row:SetHeight(22)
 
-    local ruutu = CreateFrame("CheckButton", nil, rivi, "UICheckButtonTemplate")
-    ruutu:SetSize(22, 22)
-    ruutu:SetPoint("TOPLEFT", 0, 2)
-    ruutu:SetChecked(valitut[avain] and true or false)
-    ruutu:SetScript("OnClick", function(self)
-      valitut[avain] = self:GetChecked() and true or nil
-      NS.PaivitaValinta()
+    local checkbox = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
+    checkbox:SetSize(22, 22)
+    checkbox:SetPoint("TOPLEFT", 0, 2)
+    checkbox:SetChecked(selected[key] and true or false)
+    checkbox:SetScript("OnClick", function(self)
+      selected[key] = self:GetChecked() and true or nil
+      NS.RefreshPicker()
     end)
 
-    teksti(rivi, "GameFontHighlightSmall", 28, -4,
-      varilla(item.laatu, item.nimi)
-      .. (poistaIndeksi and (" " .. HIMMEA .. "(käsin)|r") or ""))
+    label(row, "GameFontHighlightSmall", 28, -4,
+      coloured(item.quality, item.name)
+      .. (manualIndex and (" " .. DIM .. "(käsin)|r") or ""))
 
-    local alue = CreateFrame("Frame", nil, rivi)
-    alue:SetPoint("TOPLEFT", 28, -2)
-    alue:SetSize(tekstinLeveys(item.nimi) + 8, 18)
-    itemTooltip(alue, item.linkki, item.itemId)
+    local area = CreateFrame("Frame", nil, row)
+    area:SetPoint("TOPLEFT", 28, -2)
+    area:SetSize(textWidth(item.name) + 8, 18)
+    itemTooltip(area, item.link, item.itemId)
 
-    -- Montako paikalla olevaa on varannut taman: officer nakee heti onko
-    -- itemille kysyntaa vai meneeko se joka tapauksessa vendorille.
-    local halukkaita = #NS.KukaHaluaaPaikalla(item.itemId)
-    if halukkaita > 0 then
-      teksti(rivi, "GameFontHighlightSmall", 330, -4,
-        KULTA .. halukkaita .. " prio|r")
+    -- How many people present have reserved this: the officer sees at
+    -- once whether there is demand or whether it goes to the vendor
+    -- anyway.
+    local wanted = #NS.WhoWantsPresent(item.itemId)
+    if wanted > 0 then
+      label(row, "GameFontHighlightSmall", 330, -4,
+        GOLD .. wanted .. " prio|r")
     end
 
-    if poistaIndeksi then
-      local b = nappi(rivi, 24, 18, "x", function()
-        -- Avaimet ovat indekseja, joten poisto siirtaa niita. Rastit on
-        -- numeroitava uudelleen samalla - muuten rasti jaisi vaaran
-        -- itemin kohdalle.
-        -- false eika nil, jotta table.remove saa yhtenaisen taulukon:
-        -- aukkoinen taulukko ei sailo pituuttaan luotettavasti.
-        local tila, pituus = {}, #manuaaliset
-        for i = 1, pituus do tila[i] = valitut["m:" .. i] and true or false end
+    if manualIndex then
+      local b = button(row, 24, 18, "x", function()
+        -- The keys are indices, so a removal shifts them. The checks have
+        -- to be renumbered at the same time, or a check would end up on
+        -- the wrong item.
+        --
+        -- false rather than nil, so table.remove gets a contiguous array:
+        -- an array with holes does not keep its length reliably.
+        local state, length = {}, #manual
+        for i = 1, length do state[i] = selected["m:" .. i] and true or false end
 
-        table.remove(manuaaliset, poistaIndeksi)
-        table.remove(tila, poistaIndeksi)
+        table.remove(manual, manualIndex)
+        table.remove(state, manualIndex)
 
-        for i = 1, pituus do valitut["m:" .. i] = tila[i] or nil end
+        for i = 1, length do selected["m:" .. i] = state[i] or nil end
 
-        NS.PaivitaValinta()
+        NS.RefreshPicker()
       end)
       b:SetPoint("TOPRIGHT", -4, -2)
     end
@@ -1519,253 +1527,254 @@ function NS.PaivitaValinta()
     y = y - 22
   end
 
-  -- Kasin linkatut ylimmaksi: ne ovat juuri lisattyja ja siksi niita
-  -- katsotaan.
-  for i, item in ipairs(manuaaliset) do
-    piirraRivi("m:" .. i, item, i)
+  -- Hand-linked items at the top: they were just added and are therefore
+  -- what gets looked at.
+  for i, item in ipairs(manual) do
+    drawRow("m:" .. i, item, i)
   end
 
-  for _, item in ipairs(itemit) do
-    piirraRivi(item.laukku .. ":" .. item.paikka, item, nil)
+  for _, item in ipairs(items) do
+    drawRow(item.bag .. ":" .. item.slot, item, nil)
   end
 
-  sisalto:SetHeight(math.max(1, -y))
-  valinta.aloita:SetText(n > 0 and ("Aloita jako (" .. n .. ")") or "Aloita jako")
+  content:SetHeight(math.max(1, -y))
+  picker.startButton:SetText(
+    count > 0 and ("Aloita jako (" .. count .. ")") or "Aloita jako")
 end
 
--- Laukut voivat muuttua kesken valinnan: lootmaster kerää loppuja itemejä
--- ikkunan ollessa auki. Ilman tätä lista jäisi vanhentuneeksi.
-local laukkuTarkkailija = CreateFrame("Frame")
-laukkuTarkkailija:RegisterEvent("BAG_UPDATE_DELAYED")
-laukkuTarkkailija:SetScript("OnEvent", function()
-  if NS.PaivitaValinta then NS.PaivitaValinta() end
+-- The bags can change mid-pick: the master gathers the remaining items
+-- while the window is open. Without this the list would go stale.
+local bagWatcher = CreateFrame("Frame")
+bagWatcher:RegisterEvent("BAG_UPDATE_DELAYED")
+bagWatcher:SetScript("OnEvent", function()
+  if NS.RefreshPicker then NS.RefreshPicker() end
 end)
 
 --------------------------------------------------------------------------
--- Äänestysikkuna
+-- Vote window
 --------------------------------------------------------------------------
 
---- Raidaajan oma ikkuna: yksi item kerrallaan ja viisi nappia.
+--- The raider's own window: one item at a time and five buttons.
 ---
---- Erillaan paaikkunasta siksi, etta raidaajan koko tehtava on painaa yhta
---- nappia. Paaikkunan valikot, listat ja lajittelut ovat lootmasterin
---- tyokaluja, ja bossin jalkeen niiden selaaminen on vain hidaste.
+--- Separate from the main window because a raider's whole job is to press
+--- one button. The main window's menus, lists and sorting are the
+--- master's tools, and browsing them after a boss is pure friction.
 ---
---- Ikkuna nayttaa aina vanhimman itemin johon tama pelaaja ei ole
---- vastannut, ja sulkeutuu itsestaan kun vastattavaa ei ole.
-local aanestys
+--- The window always shows the oldest item this player has not answered,
+--- and closes itself when there is nothing left to answer.
+local vote
 
-local function aanestysItem()
-  local s = NS.sessio
-  if not s or s.suljettu then return nil end
+local function voteItem()
+  local s = NS.session
+  if not s or s.closed then return nil end
 
-  for _, item in ipairs(NS.AvoimetItemit()) do
-    if not s.omaVastaus[item.indeksi] then return item end
+  for _, item in ipairs(NS.OpenItems()) do
+    if not s.ownResponse[item.index] then return item end
   end
   return nil
 end
 
-function NS.PaivitaAanestys()
-  if not aanestys or not aanestys:IsShown() then return end
+function NS.RefreshVote()
+  if not vote or not vote:IsShown() then return end
 
-  local item = aanestysItem()
+  local item = voteItem()
   if not item then
-    aanestys:Hide()
+    vote:Hide()
     return
   end
 
-  local nimi, laatu = itemNimi(item)
+  local name, quality = itemName(item)
 
-  aanestys.kuva:SetTexture(ikoni(item) or "Interface\\Icons\\INV_Misc_QuestionMark")
-  aanestys.nimi:SetText(varilla(laatu, nimi))
-  aanestys.linkki = item.linkki
-  aanestys.itemId = item.itemId
-  aanestys.indeksi = item.indeksi
+  vote.texture:SetTexture(iconPath(item) or "Interface\\Icons\\INV_Misc_QuestionMark")
+  vote.name:SetText(coloured(quality, name))
+  vote.link = item.link
+  vote.itemId = item.itemId
+  vote.index = item.index
 
-  -- Montako on viela edessa. Ilman tata pelaaja ei tieda onko tama
-  -- viimeinen nappi vai viides kuudesta.
-  local jaljella = 0
-  for _, i in ipairs(NS.AvoimetItemit()) do
-    if not NS.sessio.omaVastaus[i.indeksi] then jaljella = jaljella + 1 end
+  -- How many are still ahead. Without this the player cannot tell whether
+  -- this is the last button or the fifth of six.
+  local remaining = 0
+  for _, open in ipairs(NS.OpenItems()) do
+    if not NS.session.ownResponse[open.index] then remaining = remaining + 1 end
   end
 
-  aanestys.tila:SetText(jaljella > 1
-    and (HIMMEA .. jaljella .. " itemiä vastaamatta|r")
-    or (HIMMEA .. "viimeinen item|r"))
+  vote.status:SetText(remaining > 1
+    and (DIM .. remaining .. " itemiä vastaamatta|r")
+    or (DIM .. "viimeinen item|r"))
 
-  local omaPrio = NS.OmassaProfiilissa(item.itemId)
-  for koodi, b in pairs(aanestys.napit) do
-    b:SetEnabled(koodi ~= "prio" or omaPrio)
+  local ownPrio = NS.InOwnProfile(item.itemId)
+  for code, b in pairs(vote.buttons) do
+    b:SetEnabled(code ~= "prio" or ownPrio)
   end
 
-  aanestys.selite:SetText(omaPrio
-    and (KULTA .. "Tämä item on profiilissasi.|r")
-    or (HIMMEA .. "Ei profiilissasi — LootPrio ei käytössä.|r"))
+  vote.note:SetText(ownPrio
+    and (GOLD .. "Tämä item on profiilissasi.|r")
+    or (DIM .. "Ei profiilissasi — LootPrio ei käytössä.|r"))
 
-  -- Viimeksi jaettu nakyviin tassakin. Raiderin ei tarvitse avata
-  -- paaikkunaa nahdakseen mita edellisesta itemista tuli.
-  local viimeisin
-  for _, i in pairs(NS.sessio.itemit) do
-    if i.jaettu and (not viimeisin or i.indeksi > viimeisin.indeksi) then
-      viimeisin = i
+  -- The last award, visible here too. A raider should not have to open
+  -- the main window to see what came of the previous item.
+  local latest
+  for _, other in pairs(NS.session.items) do
+    if other.awarded and (not latest or other.index > latest.index) then
+      latest = other
     end
   end
 
-  if viimeisin then
-    local vNimi, vLaatu = itemNimi(viimeisin)
-    local vast = viimeisin.saajanKoodi and NS.VASTAUS[viimeisin.saajanKoodi]
-    local luokat = NS.RaidinLuokat()
+  if latest then
+    local latestName, latestQuality = itemName(latest)
+    local response = latest.winnerCode and NS.RESPONSE[latest.winnerCode]
+    local classes = NS.RaidClasses()
 
-    aanestys.tulos:SetText(("%sViimeksi:|r %s %s→|r %s%s|r %s"):format(
-      HIMMEA,
-      varilla(vLaatu, vNimi),
+    vote.result:SetText(("%sViimeksi:|r %s %s→|r %s%s|r %s"):format(
+      DIM,
+      coloured(latestQuality, latestName),
       OK,
-      pelaajanVari(luokat[viimeisin.saaja]),
-      viimeisin.saaja or "?",
-      vast and (vast.vari .. vast.nimi .. "|r") or ""))
+      classColour(classes[latest.winner]),
+      latest.winner or "?",
+      response and (response.colour .. response.name .. "|r") or ""))
   else
-    aanestys.tulos:SetText("")
+    vote.result:SetText("")
   end
 end
 
-function NS.AvaaAanestys()
-  if not aanestysItem() then return end
+function NS.OpenVote()
+  if not voteItem() then return end
 
-  if not aanestys then
-    aanestys = CreateFrame("Frame", "LootPrioAanestys", UIParent,
+  if not vote then
+    vote = CreateFrame("Frame", "LootPrioVote", UIParent,
       "BasicFrameTemplateWithInset")
-    aanestys:SetSize(420, 196)
-    aanestys:SetPoint("CENTER", 0, 160)
-    aanestys:SetMovable(true)
-    aanestys:EnableMouse(true)
-    aanestys:RegisterForDrag("LeftButton")
-    aanestys:SetScript("OnDragStart", aanestys.StartMoving)
-    aanestys:SetScript("OnDragStop", aanestys.StopMovingOrSizing)
-    aanestys:SetClampedToScreen(true)
-    aanestys:SetFrameStrata("HIGH")
-    aanestys.TitleText:SetText("LootPrio — vastaa")
-    tinsert(UISpecialFrames, "LootPrioAanestys")
+    vote:SetSize(420, 196)
+    vote:SetPoint("CENTER", 0, 160)
+    vote:SetMovable(true)
+    vote:EnableMouse(true)
+    vote:RegisterForDrag("LeftButton")
+    vote:SetScript("OnDragStart", vote.StartMoving)
+    vote:SetScript("OnDragStop", vote.StopMovingOrSizing)
+    vote:SetClampedToScreen(true)
+    vote:SetFrameStrata("HIGH")
+    vote.TitleText:SetText("LootPrio — vastaa")
+    tinsert(UISpecialFrames, "LootPrioVote")
 
-    local ruutu = CreateFrame("Frame", nil, aanestys)
-    ruutu:SetSize(44, 44)
-    ruutu:SetPoint("TOPLEFT", 16, -34)
+    local iconFrame = CreateFrame("Frame", nil, vote)
+    iconFrame:SetSize(44, 44)
+    iconFrame:SetPoint("TOPLEFT", 16, -34)
 
-    aanestys.kuva = ruutu:CreateTexture(nil, "ARTWORK")
-    aanestys.kuva:SetAllPoints()
-    aanestys.kuva:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    vote.texture = iconFrame:CreateTexture(nil, "ARTWORK")
+    vote.texture:SetAllPoints()
+    vote.texture:SetTexCoord(0.07, 0.93, 0.07, 0.93)
 
-    ruutu:EnableMouse(true)
-    ruutu:SetScript("OnEnter", function(self)
-      if not aanestys.linkki and not aanestys.itemId then return end
+    iconFrame:EnableMouse(true)
+    iconFrame:SetScript("OnEnter", function(self)
+      if not vote.link and not vote.itemId then return end
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:SetHyperlink(aanestys.linkki or ("item:" .. aanestys.itemId))
+      GameTooltip:SetHyperlink(vote.link or ("item:" .. vote.itemId))
       GameTooltip:Show()
     end)
-    ruutu:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    iconFrame:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    aanestys.nimi = aanestys:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-    aanestys.nimi:SetPoint("TOPLEFT", 70, -38)
-    aanestys.nimi:SetPoint("TOPRIGHT", -16, -38)
-    aanestys.nimi:SetJustifyH("LEFT")
+    vote.name = vote:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+    vote.name:SetPoint("TOPLEFT", 70, -38)
+    vote.name:SetPoint("TOPRIGHT", -16, -38)
+    vote.name:SetJustifyH("LEFT")
 
-    aanestys.tila = aanestys:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    aanestys.tila:SetPoint("TOPLEFT", 70, -60)
+    vote.status = vote:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    vote.status:SetPoint("TOPLEFT", 70, -60)
 
-    aanestys.selite = aanestys:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    aanestys.selite:SetPoint("TOPLEFT", 16, -86)
-    aanestys.selite:SetPoint("TOPRIGHT", -16, -86)
-    aanestys.selite:SetJustifyH("LEFT")
+    vote.note = vote:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    vote.note:SetPoint("TOPLEFT", 16, -86)
+    vote.note:SetPoint("TOPRIGHT", -16, -86)
+    vote.note:SetJustifyH("LEFT")
 
-    aanestys.tulos = aanestys:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    aanestys.tulos:SetPoint("TOPLEFT", 16, -106)
-    aanestys.tulos:SetPoint("TOPRIGHT", -16, -106)
-    aanestys.tulos:SetJustifyH("LEFT")
-    aanestys.tulos:SetWordWrap(false)
+    vote.result = vote:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    vote.result:SetPoint("TOPLEFT", 16, -106)
+    vote.result:SetPoint("TOPRIGHT", -16, -106)
+    vote.result:SetJustifyH("LEFT")
+    vote.result:SetWordWrap(false)
 
-    -- Napit isoina ja yhdella rivilla: ne painetaan kesken taistelun
-    -- jalkipyykin, eika pieni nappi osu.
-    aanestys.napit = {}
+    -- Big buttons on one row: they are pressed during the aftermath of a
+    -- fight, and a small button does not get hit.
+    vote.buttons = {}
     local x = 14
-    for _, v in ipairs(NS.VASTAUKSET) do
-      local leveys = (v.koodi == "pass") and 56 or 76
+    for _, response in ipairs(NS.RESPONSES) do
+      local width = (response.code == "pass") and 56 or 76
 
-      local b = nappi(aanestys, leveys, 28, v.nimi, function()
-        if aanestys.indeksi then NS.Vastaa(aanestys.indeksi, v.koodi) end
-        NS.PaivitaAanestys()
+      local b = button(vote, width, 28, response.name, function()
+        if vote.index then NS.Respond(vote.index, response.code) end
+        NS.RefreshVote()
       end)
       b:SetPoint("BOTTOMLEFT", x, 14)
 
-      aanestys.napit[v.koodi] = b
-      x = x + leveys + 4
+      vote.buttons[response.code] = b
+      x = x + width + 4
     end
   end
 
-  aanestys:Show()
-  NS.PaivitaAanestys()
+  vote:Show()
+  NS.RefreshVote()
 end
 
-function NS.SuljeAanestys()
-  if aanestys then aanestys:Hide() end
+function NS.CloseVote()
+  if vote then vote:Hide() end
 end
 
 --------------------------------------------------------------------------
--- Minimap-nappi
+-- Minimap button
 --------------------------------------------------------------------------
 
-function NS.LuoMinimapNappi()
-  if NS.minimapNappi then return end
+function NS.CreateMinimapButton()
+  if NS.minimapButton then return end
 
   local b = CreateFrame("Button", "LootPrioMinimap", Minimap)
   b:SetSize(31, 31)
   b:SetFrameStrata("MEDIUM")
   b:SetFrameLevel(8)
 
-  local ikoni = b:CreateTexture(nil, "BACKGROUND")
-  ikoni:SetSize(20, 20)
-  ikoni:SetPoint("CENTER", -1, 1)
-  ikoni:SetTexture("Interface\\Icons\\INV_Misc_Coin_02")
-  ikoni:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+  local icon = b:CreateTexture(nil, "BACKGROUND")
+  icon:SetSize(20, 20)
+  icon:SetPoint("CENTER", -1, 1)
+  icon:SetTexture("Interface\\Icons\\INV_Misc_Coin_02")
+  icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
-  local kehys = b:CreateTexture(nil, "OVERLAY")
-  kehys:SetSize(53, 53)
-  kehys:SetPoint("TOPLEFT")
-  kehys:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+  local border = b:CreateTexture(nil, "OVERLAY")
+  border:SetSize(53, 53)
+  border:SetPoint("TOPLEFT")
+  border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
 
   b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
 
-  --- Asettaa napin minimapin kehalle kulman mukaan.
-  local function asetaPaikka()
-    local kulma = math.rad(NS.db.minimapKulma or 200)
+  --- Places the button on the minimap's edge according to the angle.
+  local function place()
+    local angle = math.rad(NS.db.minimapAngle or 200)
     b:SetPoint("CENTER", Minimap, "CENTER",
-      80 * math.cos(kulma), 80 * math.sin(kulma))
+      80 * math.cos(angle), 80 * math.sin(angle))
   end
 
-  -- Raahaus kiertaa nappia minimapin ympari. Kulma talletetaan, joten
-  -- paikka sailyy myos uloskirjautumisen yli.
+  -- Dragging rotates the button around the minimap. The angle is saved,
+  -- so the position survives a logout.
   b:RegisterForDrag("LeftButton")
   b:SetMovable(true)
   b:SetScript("OnDragStart", function(self)
     self:SetScript("OnUpdate", function()
       local mx, my = Minimap:GetCenter()
       local px, py = GetCursorPosition()
-      local skaala = Minimap:GetEffectiveScale()
-      px, py = px / skaala, py / skaala
-      NS.db.minimapKulma = math.deg(math.atan2(py - my, px - mx))
-      asetaPaikka()
+      local scale = Minimap:GetEffectiveScale()
+      px, py = px / scale, py / scale
+      NS.db.minimapAngle = math.deg(math.atan2(py - my, px - mx))
+      place()
     end)
   end)
   b:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
 
   b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-  b:SetScript("OnClick", function(_, nappi)
-    -- Oikea klikkaus avaa vastausikkunan uudelleen, jos sen sulki vahingossa
-    -- kesken jaon. Ilman tata vastaamatta jaanyt item olisi menetetty.
-    if nappi == "RightButton" then
-      NS.AvaaAanestys()
+  b:SetScript("OnClick", function(_, mouseButton)
+    -- A right click reopens the vote window if it was closed by accident
+    -- mid-distribution. Without this an unanswered item would be lost.
+    if mouseButton == "RightButton" then
+      NS.OpenVote()
       return
     end
 
-    if paa and paa:IsShown() then paa:Hide() else NS.Avaa() end
+    if main and main:IsShown() then main:Hide() else NS.Open() end
   end)
 
   b:SetScript("OnEnter", function(self)
@@ -1774,10 +1783,10 @@ function NS.LuoMinimapNappi()
     GameTooltip:AddLine("Vasen klikkaus: avaa ikkuna", 1, 1, 1)
     GameTooltip:AddLine("Oikea klikkaus: avaa vastausikkuna", 1, 1, 1)
 
-    if NS.sessio then
+    if NS.session then
       GameTooltip:AddLine(" ")
       GameTooltip:AddLine("Jako käynnissä — jakaa "
-        .. (NS.sessio.lootmaster or "?"), .79, .64, .15)
+        .. (NS.session.master or "?"), .79, .64, .15)
     end
 
     GameTooltip:AddLine("Raahaa: siirrä nappia", .6, .6, .6)
@@ -1785,7 +1794,6 @@ function NS.LuoMinimapNappi()
   end)
   b:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-  asetaPaikka()
-  NS.minimapNappi = b
+  place()
+  NS.minimapButton = b
 end
-

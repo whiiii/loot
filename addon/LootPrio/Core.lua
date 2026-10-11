@@ -1,97 +1,97 @@
-﻿--[[
-  LootPrio — perusta.
+--[[
+  LootPrio — foundation.
 
-  Addon ei paase verkkoon: WoW ei anna Lua-koodille mitaan yhteytta
-  ulospain. Siksi profiilit tuodaan liittamalla sivustolta kopioitu teksti,
-  ja ne sailotaan SavedVariables-tiedostoon.
+  The addon has no network access: WoW gives Lua code no way out. Profiles
+  are therefore imported by pasting text copied from the website, and kept
+  in SavedVariables.
 ]]
 
 local ADDON, NS = ...
 
-NS.NIMI = ADDON
-NS.VERSIO = "0.10"
-NS.VARI = "|cffc9a227"   -- sama kulta kuin sivustolla
-NS.LOPPU = "|r"
+NS.NAME = ADDON
+NS.VERSION = "0.10"
+NS.GOLD = "|cffc9a227"   -- same gold as the website
+NS.RESET = "|r"
 
---- Oletusasetukset. Puuttuvat kentat taytetaan naista joka latauksella,
---- jotta vanha tallennus ei kaadu uuteen asetukseen.
-local OLETUKSET = {
-  -- Kuka nakee arvonnat: "officers" tai "raid".
-  rollienNakyvyys = "officers",
+--- Default settings. Missing keys are filled in on every load so an older
+--- saved file does not break on a new setting.
+local DEFAULTS = {
+  -- Who sees the rolls: "officers" or "raid".
+  rollVisibility = "officers",
 
-  -- Ilmoitetaanko voittaja raidichattiin kun loot jaetaan.
-  ilmoitaVoittaja = true,
+  -- Announce the winner in raid chat when loot is awarded.
+  announceWinner = true,
 
-  -- Tuodut profiilit: [hahmonNimi] = { [paikka] = itemId }
-  profiilit = {},
+  -- Imported profiles: [characterName] = { [slot] = itemId }
+  profiles = {},
 
-  -- Sivuston tieto siita montako itemia kukin on saanut: [hahmo] = maara.
-  -- Addonin oma historia on vain taman koneen tieto, joten ilman tata luku
-  -- nollautuu heti kun lootmaster vaihtuu.
-  saadut = {},
+  -- The website's count of how many items each player has received:
+  -- [character] = count. The addon's own history is one machine's view
+  -- only, so without this the number resets whenever the master changes.
+  received = {},
 
-  -- Tuonnin tiedot, jotta nakee milloin data on peraisin.
-  raidinNimi = nil,
-  tuotu = nil,
+  -- Import details, so you can see when the data is from.
+  raidName = nil,
+  importedAt = nil,
 
-  -- Jaettu loot. Lista rivia { itemId, nimi, aika, luku, koodi, itemNimi }.
-  -- Tasta tehdaan vienti sivustolle.
-  historia = {},
+  -- Awarded loot. Rows of { itemId, name, time, roll, response, itemName }.
+  -- The export to the website is built from this.
+  history = {},
 
-  -- Laukkulistan vahimmaislaatu: 2 vihrea, 3 sininen, 4 violetti.
-  -- Ilman rajaa listassa olisi jokainen juomapullo ja kangaspala.
-  laukkuLaatu = 3,
+  -- Minimum quality for the bag list: 2 green, 3 blue, 4 purple. Without
+  -- a limit the list would hold every water flask and bolt of cloth.
+  bagQuality = 3,
 
-  -- Assignatut itemit jotka odottavat luovutusta. Lista rivia
-  -- { itemId, nimi, itemNimi, linkki, aika, toimitettu }.
-  kaupat = {},
+  -- Awarded items still waiting to be handed over. Rows of
+  -- { itemId, name, itemName, link, time, delivered }.
+  trades = {},
 
-  -- Taytetaanko kauppaikkuna itsestaan. Addon ei koskaan hyvaksy kauppaa,
-  -- vain asettaa tavarat paikoilleen.
-  taytaKauppa = true,
+  -- Fill the trade window automatically. The addon never accepts a trade,
+  -- it only puts the items in place.
+  autoFillTrade = true,
 
-  -- Historian rivien juokseva tunniste. Tarvitaan jaon perumiseen:
-  -- indeksi siirtyy kun rivi poistetaan, tunniste ei.
-  historiaSeuraavaId = 1,
+  -- Running id for history rows. Needed to undo an award: an index shifts
+  -- when a row is removed, an id does not.
+  nextHistoryId = 1,
 
-  -- Montako sekuntia vastauksia odotetaan ennen kuin niista muistutetaan.
-  -- Ei pakota mitaan: lootmaster paattaa milloin riittaa.
-  vastausAika = 90,
+  -- How many seconds to wait for responses before the clock turns red.
+  -- Forces nothing: the master decides when it is enough.
+  responseTime = 90,
 
-  -- Hahmon muut kirjoitusasut: [alias pienella] = profiilin nimi. Peli ja
-  -- sivusto eivat valttamatta kayta samaa muotoa.
-  aliakset = {},
+  -- Other spellings of a character name: [alias in lowercase] = profile
+  -- name. The game and the website do not necessarily use the same form.
+  aliases = {},
 
-  -- Killan officerit sivustolta: [hahmo] = true. Tyhja tarkoittaa "ei
-  -- tietoa", jolloin pelkka raidin arvo riittaa.
-  officerit = {},
+  -- Guild officers from the website: [character] = true. Empty means
+  -- "not known", in which case raid rank alone is enough.
+  officers = {},
 
-  -- Minimap-napin kulma asteina. Sijainti sailyy istuntojen yli.
-  minimapKulma = 200,
+  -- Minimap button angle in degrees. The position survives sessions.
+  minimapAngle = 200,
 }
 
-local function taydenna(kohde, oletus)
-  for avain, arvo in pairs(oletus) do
-    if kohde[avain] == nil then
-      if type(arvo) == "table" then
-        kohde[avain] = {}
-        taydenna(kohde[avain], arvo)
+local function fillDefaults(target, defaults)
+  for key, value in pairs(defaults) do
+    if target[key] == nil then
+      if type(value) == "table" then
+        target[key] = {}
+        fillDefaults(target[key], value)
       else
-        kohde[avain] = arvo
+        target[key] = value
       end
     end
   end
 end
 
-function NS.Tulosta(...)
-  print(NS.VARI .. "LootPrio" .. NS.LOPPU .. ":", ...)
+function NS.Print(...)
+  print(NS.GOLD .. "LootPrio" .. NS.RESET .. ":", ...)
 end
 
---- Oman .toc-tiedoston ilmoittama Interface-numero.
+--- The Interface number declared by our own .toc.
 ---
---- Rajapinta siirtyi C_AddOns-nimiavaruuteen kesken Classicin elinkaaren.
---- Molemmat tuetaan, koska juuri taman addonin ongelma on se ettei
---- clientin versiosta ole varmuutta.
+--- The API moved into the C_AddOns namespace partway through Classic's
+--- life. Both are supported, because this addon's whole problem is that
+--- the client version is not certain.
 function NS.TocInterface()
   if C_AddOns and C_AddOns.GetAddOnMetadata then
     return C_AddOns.GetAddOnMetadata(ADDON, "Interface")
@@ -102,275 +102,267 @@ function NS.TocInterface()
   return nil
 end
 
---- Pelaajan nimi profiilien muodossa.
+--- The player's name in the profiles' form.
 ---
---- Muunnos tehdaan tassa eika kutsupaikoissa: jos oma nimi olisi valilla
---- pelin ja valilla sivuston muodossa, vertailut osuisivat satunnaisesti.
---- NS.Nimi tulee Data.lua:sta, joka latautuu taman jalkeen - siksi
---- tarkistus.
-function NS.OmaNimi()
-  local nimi = UnitName("player")
-  if NS.Nimi then return NS.Nimi(nimi) end
-  return nimi
+--- Converted here rather than at every call site: if our own name were
+--- sometimes in the game's form and sometimes the website's, comparisons
+--- would match at random. NS.Name comes from Data.lua, which loads after
+--- this file — hence the check.
+function NS.MyName()
+  local name = UnitName("player")
+  if NS.Name then return NS.Name(name) end
+  return name
 end
 
---- Pelin antama nimi sellaisenaan, ilman muunnosta.
+--- The name the game gives, without conversion.
 ---
---- Tarvitaan niissa harvoissa paikoissa joissa nimea kaytetaan pelille
---- puhumiseen eika profiilien vertailuun.
-function NS.OmaPeliNimi()
+--- Needed in the few places where the name is used to talk to the game
+--- rather than to compare against profiles.
+function NS.MyGameName()
   return UnitName("player")
 end
 
---- Onko pelaajalla killan officer-oikeudet sivustolla.
+--- Does the player have guild officer rights on the website.
 ---
---- Lista tulee viennin O-rivilla. Tyhja lista tarkoittaa "ei tietoa":
---- vanha vienti ei sisalla sita, eika tuomaton addon tieda mitaan. Silloin
---- ei rajoiteta - addon joka lukitsee itsensa puuttuvan datan takia on
---- hyodyttomampi kuin addon joka luottaa raidin arvoon.
-function NS.SivustonOfficer(nimi)
-  local lista = NS.db and NS.db.officerit
-  if not lista then return true end
+--- The list arrives on the export's O line. An empty list means "not
+--- known": an older export does not contain it, and an addon that has
+--- imported nothing knows nothing. In that case nothing is restricted —
+--- an addon that locks itself over missing data is less useful than one
+--- that trusts raid rank.
+function NS.IsSiteOfficer(name)
+  local list = NS.db and NS.db.officers
+  if not list then return true end
 
-  local kpl = 0
-  for _ in pairs(lista) do kpl = kpl + 1 end
-  if kpl == 0 then return true end
+  local count = 0
+  for _ in pairs(list) do count = count + 1 end
+  if count == 0 then return true end
 
-  return lista[nimi] == true
+  return list[name] == true
 end
 
---- Pelkka raidin arvo, ilman killan officer-tarkistusta.
+--- Raid rank only, without the guild officer check.
 ---
---- Tarvitaan vain sen selittamiseen miksi jakonappi puuttuu: assist joka
---- ei ole killan officer ansaitsee syyn, ei tyhjaa ruutua.
-function NS.OnJohtajaTaiApulainen(nimi)
-  nimi = nimi or NS.OmaNimi()
+--- Needed only to explain why the distribute button is missing: an assist
+--- who is not a guild officer deserves a reason, not an empty screen.
+function NS.HasRaidRank(name)
+  name = name or NS.MyName()
 
   if not IsInRaid() then
-    return UnitIsGroupLeader("player") and nimi == NS.OmaNimi()
+    return UnitIsGroupLeader("player") and name == NS.MyName()
   end
 
   for i = 1, GetNumGroupMembers() do
-    local rNimi, rank = GetRaidRosterInfo(i)
-    if rNimi and NS.Nimi(rNimi) == nimi then
+    local rosterName, rank = GetRaidRosterInfo(i)
+    if rosterName and NS.Name(rosterName) == name then
       return (rank or 0) >= 1
     end
   end
   return false
 end
 
---- Onko pelaajalla oikeus avata jako ja nahda kaikkien vastaukset.
+--- May the player open a distribution and see everyone's responses.
 ---
---- Vaatii seka raidin arvon etta killan officer-oikeuden. Raidin arvo
---- yksin ei riita: assist annetaan usein markkereita varten eika loottia.
---- Killan arvo yksin ei riita myoskaan: raidissa jakaa se jolla on raidin
---- oikeudet, ei officer joka on paikalla vain katsomassa.
+--- Requires both raid rank and guild officer rights. Raid rank alone is
+--- not enough: assist is often handed out for markers, not loot. Guild
+--- rank alone is not enough either: in a raid, loot is distributed by
+--- whoever holds raid rights, not by an officer who is only watching.
 ---
---- Kumpikaan ei tule viestin sisallosta - raidin arvo luetaan pelilta ja
---- officer-lista tuodusta viennista - joten muokattu addon ei voi vaittaa
---- olevansa kumpikaan.
-function NS.OnOfficer(nimi)
-  nimi = nimi or NS.OmaNimi()
+--- Neither comes from a message body — raid rank is read from the game
+--- and the officer list from the imported export — so a modified addon
+--- cannot claim to be either.
+function NS.IsOfficer(name)
+  name = name or NS.MyName()
 
-  if not NS.SivustonOfficer(nimi) then return false end
-
-  if not IsInRaid() then
-    -- Ryhmassa ilman raidia johtaja riittaa.
-    return UnitIsGroupLeader("player") and nimi == NS.OmaNimi()
-  end
-
-  for i = 1, GetNumGroupMembers() do
-    local rNimi, rank = GetRaidRosterInfo(i)
-    -- Roosterin nimi on pelin muodossa, vertailtava nimi profiilien.
-    if rNimi and NS.Nimi(rNimi) == nimi then
-      return (rank or 0) >= 1
-    end
-  end
-  return false
+  if not NS.IsSiteOfficer(name) then return false end
+  return NS.HasRaidRank(name)
 end
 
---- Onko pelaaja raidin johtaja.
+--- Is the player the raid leader.
 ---
---- Eri asia kuin officer: apulaisia voi olla monta, johtaja on yksi. Vain
---- johtaja voi ottaa kesken jaaneen jaon haltuunsa, koska muuten kaksi
---- apulaista voisi riidella siita kumpi jakaa.
+--- Different from officer: there can be many assists, there is one
+--- leader. Only the leader can take over a distribution left hanging,
+--- because otherwise two assists could take it from each other in turn.
 ---
---- Vaatii myos killan officer-oikeuden: haltuunotto antaa oikeuden jakaa,
---- eika sita voi saada helpommin kuin jaon avaamisen.
-function NS.OnJohtaja(nimi)
-  nimi = nimi or NS.OmaNimi()
+--- Also requires guild officer rights: taking over grants the right to
+--- distribute, and that must not be easier to get than opening one.
+function NS.IsLeader(name)
+  name = name or NS.MyName()
 
-  if not NS.SivustonOfficer(nimi) then return false end
+  if not NS.IsSiteOfficer(name) then return false end
 
   if not IsInRaid() then
-    return UnitIsGroupLeader("player") and nimi == NS.OmaNimi()
+    return UnitIsGroupLeader("player") and name == NS.MyName()
   end
 
   for i = 1, GetNumGroupMembers() do
-    local rNimi, rank = GetRaidRosterInfo(i)
-    if rNimi and NS.Nimi(rNimi) == nimi then
+    local rosterName, rank = GetRaidRosterInfo(i)
+    if rosterName and NS.Name(rosterName) == name then
       return (rank or 0) >= 2
     end
   end
   return false
 end
 
---- Onko nimetty pelaaja paikalla ja yhteydessa.
-function NS.Paikalla(nimi)
-  if not nimi then return false end
-  return NS.RaidinJasenet()[nimi] == true
+--- Is the named player present and online.
+function NS.IsPresent(name)
+  if not name then return false end
+  return NS.RaidMembers()[name] == true
 end
 
---- Raidissa olevien luokat: [profiilinimi] = "WARRIOR".
+--- Classes of everyone in the raid: [profileName] = "WARRIOR".
 ---
---- Luokkavari on nopein tapa erottaa nimet toisistaan listassa, eika sita
---- varten kannata kysya sivustolta mitaan - peli tietaa sen jo.
-function NS.RaidinLuokat()
-  local luokat = {}
+--- Class colour is the fastest way to tell names apart in a list, and the
+--- game already knows it — no need to ask the website.
+function NS.RaidClasses()
+  local classes = {}
 
   if IsInRaid() then
     for i = 1, GetNumGroupMembers() do
-      local nimi, _, _, _, _, tiedosto = GetRaidRosterInfo(i)
-      if nimi then luokat[NS.Nimi(nimi)] = tiedosto end
+      local name, _, _, _, _, fileName = GetRaidRosterInfo(i)
+      if name then classes[NS.Name(name)] = fileName end
     end
   else
-    luokat[NS.OmaNimi()] = select(2, UnitClass("player"))
+    classes[NS.MyName()] = select(2, UnitClass("player"))
     for i = 1, GetNumSubgroupMembers() do
-      local yksikko = "party" .. i
-      local nimi = UnitName(yksikko)
-      if nimi then luokat[NS.Nimi(nimi)] = select(2, UnitClass(yksikko)) end
+      local unit = "party" .. i
+      local name = UnitName(unit)
+      if name then classes[NS.Name(name)] = select(2, UnitClass(unit)) end
     end
   end
 
-  return luokat
+  return classes
 end
 
---- Onko pelaaja master looter.
-function NS.OnLootMaster()
-  local metodi, mlPartyID, mlRaidID = GetLootMethod()
-  if metodi ~= "master" then return false end
+--- Is the player the master looter.
+function NS.IsMasterLooter()
+  local method, mlPartyID, mlRaidID = GetLootMethod()
+  if method ~= "master" then return false end
 
   if IsInRaid() then
     if not mlRaidID then return false end
-    local nimi = GetRaidRosterInfo(mlRaidID)
-    return nimi == NS.OmaPeliNimi()
+    local name = GetRaidRosterInfo(mlRaidID)
+    return name == NS.MyGameName()
   end
 
-  -- Ryhmassa 0 tarkoittaa pelaajaa itseaan.
+  -- In a party, 0 means the player themselves.
   return mlPartyID == 0
 end
 
---- Missa ollaan ja kuinka suuri raidi on.
+--- Where we are and how large the raid is.
 ---
---- Sivusto erottaa illat toisistaan naiden perusteella: samalla viikolla
---- voi olla yksi 40-man ja pari 20-man, eri lootmastereilla. Ilman
---- instanssia ja kokoa lokit nayttaisivat jalkikateen samanlaisilta.
-function NS.Instanssi()
-  local nimi, tyyppi, _, _, maxKoko, _, _, _, ryhmanKoko = GetInstanceInfo()
+--- The website tells nights apart by these: one week can hold one 40-man
+--- and a couple of 20-mans, run by different masters. Without the
+--- instance and the size the logs would look identical afterwards.
+function NS.Instance()
+  local name, instanceType, _, _, maxPlayers, _, _, _, groupSize =
+    GetInstanceInfo()
 
-  -- Instanssin ulkopuolella nimi on maailmankartan alue, joka ei kerro
-  -- raidista mitaan.
-  if tyyppi ~= "raid" and tyyppi ~= "party" then nimi = nil end
+  -- Outside an instance the name is a world map zone, which says nothing
+  -- about the raid.
+  if instanceType ~= "raid" and instanceType ~= "party" then name = nil end
 
-  local koko = 0
-  if maxKoko and maxKoko > 0 then
-    koko = maxKoko
-  elseif ryhmanKoko and ryhmanKoko > 0 then
-    koko = ryhmanKoko
+  local size = 0
+  if maxPlayers and maxPlayers > 0 then
+    size = maxPlayers
+  elseif groupSize and groupSize > 0 then
+    size = groupSize
   else
-    koko = GetNumGroupMembers() or 0
+    size = GetNumGroupMembers() or 0
   end
 
-  return nimi, koko
+  return name, size
 end
 
---- Itemin numero linkista. Linkki on muotoa |cff...|Hitem:19019:...
-function NS.ItemIdLinkista(linkki)
-  if not linkki then return nil end
-  local id = linkki:match("item:(%d+)")
+--- The item number from a link. A link looks like |cff...|Hitem:19019:...
+function NS.ItemIdFromLink(link)
+  if not link then return nil end
+  local id = link:match("item:(%d+)")
   return id and tonumber(id) or nil
 end
 
---- Raidissa paikalla olevat profiilien nimilla joukkona.
+--- Raid members who are present, as a set keyed by profile name.
 ---
---- Nimet muunnetaan heti profiilien muotoon: tama on se paikka josta pelin
---- nimet valuvat koko addonin lapi, ja yksi muunnos tassa riittaa.
-function NS.RaidinJasenet()
-  local joukko = {}
+--- Names are converted to the profiles' form right here: this is the
+--- place where the game's names flow into the addon, and one conversion
+--- here is enough.
+function NS.RaidMembers()
+  local set = {}
 
   if IsInRaid() then
     for i = 1, GetNumGroupMembers() do
-      local nimi, _, _, _, _, _, _, online = GetRaidRosterInfo(i)
-      if nimi then joukko[NS.Nimi(nimi)] = online ~= false end
+      local name, _, _, _, _, _, _, online = GetRaidRosterInfo(i)
+      if name then set[NS.Name(name)] = online ~= false end
     end
   elseif IsInGroup() then
-    joukko[NS.OmaNimi()] = true
+    set[NS.MyName()] = true
     for i = 1, GetNumSubgroupMembers() do
-      local nimi = UnitName("party" .. i)
-      if nimi then joukko[NS.Nimi(nimi)] = true end
+      local name = UnitName("party" .. i)
+      if name then set[NS.Name(name)] = true end
     end
   else
-    joukko[NS.OmaNimi()] = true
+    set[NS.MyName()] = true
   end
 
-  return joukko
+  return set
 end
 
--- Latauksen kasittely ------------------------------------------------------
+-- Load handling ------------------------------------------------------------
 
-local kehys = CreateFrame("Frame")
-kehys:RegisterEvent("ADDON_LOADED")
-kehys:SetScript("OnEvent", function(_, tapahtuma, nimi)
-  if tapahtuma ~= "ADDON_LOADED" or nimi ~= ADDON then return end
+local frame = CreateFrame("Frame")
+frame:RegisterEvent("ADDON_LOADED")
+frame:SetScript("OnEvent", function(_, event, name)
+  if event ~= "ADDON_LOADED" or name ~= ADDON then return end
 
   LootPrioDB = LootPrioDB or {}
-  taydenna(LootPrioDB, OLETUKSET)
+  fillDefaults(LootPrioDB, DEFAULTS)
   NS.db = LootPrioDB
 
-  local kpl = 0
-  for _ in pairs(NS.db.profiilit) do kpl = kpl + 1 end
+  local count = 0
+  for _ in pairs(NS.db.profiles) do count = count + 1 end
 
-  NS.Tulosta(("v%s ladattu. Profiileja %d. Avaa ikkuna minimapin napista tai /lp"):format(
-    NS.VERSIO, kpl))
+  NS.Print(("v%s ladattu. Profiileja %d. Avaa ikkuna minimapin napista tai /lp"):format(
+    NS.VERSION, count))
 
-  -- Clientin Interface-numero nakyviin heti. Vaara numero .toc-tiedostossa
-  -- nakyy vain merkintana "Incompatible" addonilistassa, eika mikaan kerro
-  -- mika oikea numero olisi - paitsi tama rivi, kun addon kerran latautuu.
-  local tocNumero = NS.TocInterface()
-  local clientNumero = select(4, GetBuildInfo())
+  -- Show the client's Interface number right away. A wrong number in the
+  -- .toc shows up only as "Incompatible" in the addon list, and nothing
+  -- tells you what the right number would be — except this line, once the
+  -- addon loads at all.
+  local tocNumber = NS.TocInterface()
+  local clientNumber = select(4, GetBuildInfo())
 
-  if tocNumero and clientNumero and tostring(tocNumero) ~= tostring(clientNumero) then
-    NS.Tulosta(("HUOM: .toc sanoo %s, client on %s. Korjaa .toc-tiedoston "
-      .. "ensimmainen rivi muotoon '## Interface: %s'."):format(
-      tocNumero, clientNumero, clientNumero))
+  if tocNumber and clientNumber and tostring(tocNumber) ~= tostring(clientNumber) then
+    NS.Print(("HUOM: .toc sanoo %s, client on %s. Korjaa .toc-tiedoston "
+      .. "ensimmäinen rivi muotoon '## Interface: %s'."):format(
+      tocNumber, clientNumber, clientNumber))
   end
 
-  if NS.LuoMinimapNappi then NS.LuoMinimapNappi() end
+  if NS.CreateMinimapButton then NS.CreateMinimapButton() end
 end)
 
--- Komennot -----------------------------------------------------------------
+-- Commands -----------------------------------------------------------------
 
 SLASH_LOOTPRIO1 = "/lootprio"
 SLASH_LOOTPRIO2 = "/lp"
 
-SlashCmdList.LOOTPRIO = function(syote)
-  local komento, loput = syote:match("^(%S*)%s*(.-)$")
-  komento = (komento or ""):lower()
+SlashCmdList.LOOTPRIO = function(input)
+  local command = input:match("^(%S*)")
+  command = (command or ""):lower()
 
-  -- Komennot ovat oikotie, eivat ainoa tie: kaikki loytyy ikkunan napeista.
-  if komento == "" then
-    NS.Avaa()
-  elseif komento == "loot" then
-    NS.Avaa("loot")
-  elseif komento == "tuo" or komento == "import" then
-    NS.Avaa("tuonti")
-  elseif komento == "jasenet" then
-    NS.Avaa("jasenet")
-  elseif komento == "historia" then
-    NS.Avaa("historia")
-  elseif komento == "kauppa" then
-    NS.Avaa("kauppa")
+  -- Commands are a shortcut, not the only way: everything is reachable
+  -- from the window's buttons.
+  if command == "" then
+    NS.Open()
+  elseif command == "loot" then
+    NS.Open("loot")
+  elseif command == "tuo" or command == "import" then
+    NS.Open("import")
+  elseif command == "jasenet" or command == "members" then
+    NS.Open("members")
+  elseif command == "historia" or command == "history" then
+    NS.Open("history")
+  elseif command == "kauppa" or command == "trade" then
+    NS.Open("trade")
   else
-    NS.Tulosta("kayta: /lp  (avaa ikkunan)")
+    NS.Print("käytä: /lp  (avaa ikkunan)")
   end
 end

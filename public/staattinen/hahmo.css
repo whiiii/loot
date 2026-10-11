@@ -87,9 +87,9 @@ a.linkkinappi[hidden] { display: none; }
 .roster {
   position: fixed;
   left: 1rem;
-  top: 62px;
+  top: 76px;
   width: 190px;
-  max-height: calc(100vh - 76px);
+  max-height: calc(100vh - 92px);
   display: flex;
   flex-direction: column;
   border: 1px solid var(--reuna);
