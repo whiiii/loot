@@ -201,7 +201,7 @@ async function poistaTuonti(t) {
       `Poistaa ${t.rivit_jaljella ?? 0} itemiä historiasta. Ne häviävät myös ` +
       "jäsenten profiileista.\n\n" +
       "Tätä ei voi perua. Alkuperäinen teksti häviää samalla, joten ota se " +
-      "ensin talteen jos saatat tarvita sitä.",
+      "ensin talteen, jos saatat tarvita sitä.",
     vahvista: "Poista",
     varoitus: true,
   });

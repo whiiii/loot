@@ -18,14 +18,8 @@ let minaOlen = "";
  * jokaiseen savyyn.
  */
 const KUVAKE = {
-  lukkoKiinni:
-    '<rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>',
-  lukkoAuki:
-    '<rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path>',
   avain:
     '<circle cx="7.5" cy="15.5" r="4.5"></circle><path d="M10.7 12.3 21 2"></path><path d="m17 6 3 3"></path>',
-  roska:
-    '<polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>',
 };
 
 /** Nappi tai linkki, jolla on kuvake ja teksti. */
@@ -204,39 +198,7 @@ function piirra(users) {
     tr.appendChild(tila);
 
     const toiminto = document.createElement("td");
-    toiminto.className = "toiminnot";
-
-    // Napit ovat samanlevyisia ja kuvakkeellisia: sama leveys pitaa rivit
-    // suorassa, ja kuvake erottaa toiminnon nopeammin kuin sanan lukeminen.
-    // Savy kertoo painoarvon - lukko odottaa tekemista, poisto on
-    // peruuttamaton.
-    toiminto.appendChild(
-      teeNappi({
-        teksti: u.locked ? "Avaa" : "Lukitse",
-        kuvake: u.locked ? KUVAKE.lukkoAuki : KUVAKE.lukkoKiinni,
-        luokka: u.locked ? "nappi-korostus" : "nappi-hillitty",
-        toiminto: () => vaihdaLukko(u.username, !u.locked),
-      })
-    );
-
-    toiminto.appendChild(
-      teeNappi({
-        teksti: "Salasana",
-        kuvake: KUVAKE.avain,
-        luokka: "nappi-hillitty",
-        toiminto: () => vaihdaSalasana(u.username),
-      })
-    );
-
-    toiminto.appendChild(
-      teeNappi({
-        teksti: "Poista",
-        kuvake: KUVAKE.roska,
-        luokka: "nappi-vaara",
-        toiminto: () => poistaKayttaja(u),
-      })
-    );
-
+    toiminto.appendChild(toimintovalitsin(u));
     tr.appendChild(toiminto);
 
     tbody.appendChild(tr);
@@ -404,6 +366,39 @@ function merkki(teksti, luokka) {
   span.className = "merkki " + luokka;
   span.textContent = teksti;
   return span;
+}
+
+/**
+ * Rivin toiminnot yhdessä valitsimessa.
+ *
+ * Kolme nappia vei leveyttä yli kolmesataa pikseliä, ja taulukko valui
+ * sivun ulkopuolelle. Valitsin on sama elementti kuin luokka ja rooli
+ * samalla rivillä, joten se ei tuo uutta opeteltavaa.
+ */
+function toimintovalitsin(u) {
+  const sel = document.createElement("select");
+  sel.className = "roolivalinta toimintovalinta";
+
+  sel.appendChild(new Option("Toiminnot…", ""));
+  sel.appendChild(
+    new Option(u.locked ? "Avaa lukko" : "Lukitse profiili", "lukko")
+  );
+  sel.appendChild(new Option("Vaihda salasana", "salasana"));
+  sel.appendChild(new Option("Poista jäsen", "poista"));
+
+  sel.addEventListener("change", () => {
+    const valinta = sel.value;
+
+    // Palautetaan otsikko heti: valittuna jäänyt toiminto näyttäisi
+    // siltä kuin se olisi rivin tila eikä kertaluonteinen teko.
+    sel.value = "";
+
+    if (valinta === "lukko") vaihdaLukko(u.username, !u.locked);
+    else if (valinta === "salasana") vaihdaSalasana(u.username);
+    else if (valinta === "poista") poistaKayttaja(u);
+  });
+
+  return sel;
 }
 
 async function vaihdaLukko(username, locked) {

@@ -208,7 +208,7 @@ function avaaValitsin(paikka) {
   if (sopivat.length === 0) {
     const p = document.createElement("p");
     p.className = "himmea";
-    p.textContent = "Tähän paikkaan ei ole itemejä tässä raidissa.";
+    p.textContent = "Tähän paikkaan ei ole itemeitä tässä raidissa.";
     lista.appendChild(p);
   }
 
@@ -384,7 +384,7 @@ $("tallenna").addEventListener("click", async () => {
   // olisi pelkka ylimaarainen klikkaus, koska han paasee muokkaamaan yha.
   if (!officer) {
     const toka = await vahvista({
-      otsikko: "Tämän jälkeen et pääse muokkaamaan",
+      otsikko: "Tämän jälkeen et pääse muokkaamaan valintojasi",
       teksti:
         "Profiili lukitaan. Et pysty itse avaamaan sitä etkä muuttamaan " +
         "valintojasi.\n\nMikäli ei kerrasta osunut, niin oleppa jonnekki " +

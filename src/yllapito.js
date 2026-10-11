@@ -244,7 +244,8 @@ export async function luoKayttaja(env, actor, tiedot) {
   if (!TUNNUS_SAANTO.test(tunnus)) {
     return {
       error:
-        "Tunnus: 3–20 merkkiä, vain kirjaimia, numeroita, alaviiva tai väliviiva.",
+        "Tunnuksessa saa olla 3–20 merkkiä: kirjaimia, numeroita, " +
+        "alaviivoja tai väliviivoja.",
       status: 400,
     };
   }

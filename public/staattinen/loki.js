@@ -88,7 +88,7 @@ function piirra(rivit) {
 
     // Lisätiedot on se kenttä johon lukon avaamisen syy tallentuu.
     const lisa = solu(r.details || "—");
-    if (!r.details) lisa.className = "vaimea";
+    lisa.className = r.details ? "katkaise" : "vaimea";
     lisa.title = r.details || "";
     tr.appendChild(lisa);
 
