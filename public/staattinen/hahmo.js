@@ -67,8 +67,7 @@ async function lataa() {
       $("katseltava").textContent = hahmonNimi(u);
       $("lukkoilmoitus").hidden = true;
       $("tallenna").hidden = true;
-      // Tanne paastiin vain officerina: katselu vaatii officer-oikeudet.
-      naytaOfficerValikko();
+      if (mina.user.role === "officer") naytaOfficerValikko();
     } else {
       // Lukko ei rajoita officeria, joten hanelle se ei ole "lukittu" tila
       // vaan pelkka merkinta.
@@ -87,8 +86,69 @@ async function lataa() {
 
     $("raidi").textContent = tila.raid ? tila.raid.name : "Ei aktiivista raidia";
     piirraPaikat();
+    lataaRoster(u.username);
   } catch (err) {
     naytaViesti("Virhe: " + (err && err.message ? err.message : String(err)));
+  }
+}
+
+/* ---------- jäsenlista ---------- */
+
+/**
+ * Jäsenlista sivupalkkiin.
+ *
+ * Kaikille, ei vain officerille: valintojen vertailu on koko sivuston
+ * tarkoitus, ja raiderin pitää nähdä kuka muu on varannut saman itemin.
+ */
+async function lataaRoster(nykyinen) {
+  const sailio = $("roster-lista");
+
+  try {
+    const d = await fetch("/api/roster").then((r) => r.json());
+
+    if (!d.ok) {
+      sailio.innerHTML = '<p class="himmea">Lista ei latautunut.</p>';
+      return;
+    }
+
+    sailio.innerHTML = "";
+
+    for (const j of d.jasenet) {
+      const rivi = document.createElement("button");
+      rivi.type = "button";
+      rivi.className = "roster-rivi";
+      if (j.username === nykyinen) rivi.classList.add("nyt");
+
+      const nimi = document.createElement("span");
+      nimi.className = "roster-nimi";
+      nimi.textContent = hahmonNimi(j);
+      nimi.style.color = luokanVari(j.class);
+      rivi.appendChild(nimi);
+
+      // Luokka, rooli ja valintojen määrä: niistä näkee kenen profiilia
+      // kannattaa katsoa ja kuka ei ole vielä täyttänyt omaansa.
+      const osat = [];
+      if (LUOKAT[j.class]) osat.push(LUOKAT[j.class].nimi);
+      if (RAIDIROOLIT[j.raid_role]) osat.push(RAIDIROOLIT[j.raid_role]);
+
+      const tiedot = document.createElement("span");
+      tiedot.className = "roster-tiedot";
+      tiedot.textContent =
+        (osat.join(" · ") || "—") + `  ${j.valintoja}/${d.paikkoja}`;
+      rivi.appendChild(tiedot);
+
+      rivi.addEventListener("click", () => {
+        location.href = "/profiili?katso=" + encodeURIComponent(j.username);
+      });
+
+      sailio.appendChild(rivi);
+    }
+
+    if (d.jasenet.length === 0) {
+      sailio.innerHTML = '<p class="himmea">Ei jäseniä.</p>';
+    }
+  } catch {
+    sailio.innerHTML = '<p class="himmea">Lista ei latautunut.</p>';
   }
 }
 

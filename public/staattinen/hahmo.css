@@ -92,21 +92,95 @@ a.linkkinappi[hidden] { display: none; }
 }
 .ilmoitus.katselu a:hover { color: var(--katselu); text-decoration: underline; }
 
+/* Sivun asettelu: jasenlista vasemmalla, hahmoikkuna sen oikealla
+   puolella. Lista on sticky, jotta se pysyy nakyvissa kun hahmoikkunaa
+   vierittaa. */
+.sivuasettelu {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: .9rem 1rem 0;
+}
+
+.roster {
+  flex: 0 0 190px;
+  position: sticky;
+  top: 62px;
+  max-height: calc(100vh - 76px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--reuna);
+  border-radius: var(--pyoristys);
+  background: var(--paneeli);
+  overflow: hidden;
+}
+
+.roster-otsikko {
+  padding: .45rem .6rem;
+  border-bottom: 1px solid var(--reuna);
+  font-size: .7rem;
+  color: var(--himmea);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+.roster-lista { overflow-y: auto; padding: .3rem; }
+.roster-lista p { margin: .4rem .3rem; font-size: .8rem; }
+
+.roster-rivi {
+  display: block;
+  width: 100%;
+  padding: .3rem .4rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--pyoristys);
+  color: var(--teksti);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.roster-rivi:hover { background: var(--hover); filter: none; }
+.roster-rivi.nyt {
+  border-color: var(--kulta-tumma);
+  background: rgba(201, 162, 39, .1);
+}
+
+.roster-nimi {
+  display: block;
+  font-size: .82rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.roster-tiedot {
+  display: block;
+  font-size: .68rem;
+  color: var(--himmea);
+}
+
+/* Kapealla naytolla lista menee hahmoikkunan ylapuolelle: 190 pikselia
+   sivussa jattaisi itemipalkeille liian vahan tilaa. */
+@media (max-width: 900px) {
+  .sivuasettelu { flex-direction: column; }
+  .roster { position: static; flex: 1 1 auto; width: 100%; max-height: 220px; }
+}
+
 /* Hahmoikkuna.
    Kaksi saraketta reunoilla, keskella tyhja alue ja alla kolme asepaikkaa. */
 .hahmo {
-  max-width: 900px;
-  margin: 1.5rem auto 0;
-  padding: 0 1rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 840px;
+  margin: 0 auto;
   display: grid;
   grid-template-columns: auto 1fr auto;
   grid-template-areas:
     "vasen keski oikea"
     "ala   ala   ala";
-  gap: 1rem;
+  gap: .55rem;
 }
 
-.sarake { display: flex; flex-direction: column; gap: .5rem; }
+.sarake { display: flex; flex-direction: column; gap: .3rem; }
 .vasen  { grid-area: vasen; }
 .oikea  { grid-area: oikea; }
 
@@ -119,9 +193,9 @@ a.linkkinappi[hidden] { display: none; }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1rem;
-  padding: 1.25rem 1rem;
-  min-height: 340px;
+  gap: .6rem;
+  padding: .8rem .8rem;
+  min-height: 0;
 }
 
 /* Hahmon nimi kuvan ylapuolella, kuten pelin omassa ikkunassa. */
@@ -129,7 +203,7 @@ a.linkkinappi[hidden] { display: none; }
 .hahmo-otsikko strong {
   font-family: var(--fontti-otsikko);
   display: block;
-  font-size: 1.45rem;
+  font-size: 1.2rem;
   font-weight: 400;
   letter-spacing: .03em;
 }
@@ -144,7 +218,7 @@ a.linkkinappi[hidden] { display: none; }
 .keski-tyhja { color: var(--vaimea); font-size: .9rem; letter-spacing: .25em; }
 .keski img {
   max-width: 100%;
-  max-height: 420px;
+  max-height: 290px;
   display: block;
   image-rendering: auto;
 }
@@ -154,15 +228,15 @@ a.linkkinappi[hidden] { display: none; }
   grid-area: ala;
   display: flex;
   justify-content: center;
-  gap: .5rem;
-  margin-top: .25rem;
+  gap: .3rem;
+  margin-top: .1rem;
 }
 
 /* Yksi paikka. */
 .paikka {
-  width: 190px;
+  width: 168px;
   display: block;
-  padding: .4rem .55rem;
+  padding: .28rem .45rem;
   background: var(--paneeli);
   border: 1px solid var(--reuna);
   border-radius: var(--pyoristys);
@@ -194,8 +268,8 @@ a.linkkinappi[hidden] { display: none; }
 }
 
 .item-ikoni {
-  width: 26px; height: 26px;
-  flex: 0 0 26px;
+  width: 22px; height: 22px;
+  flex: 0 0 22px;
   border: 1px solid var(--syva);
   border-radius: 3px;
   background: var(--syva);

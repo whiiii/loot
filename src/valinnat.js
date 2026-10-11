@@ -47,6 +47,35 @@ export async function haeAktiiviRaidi(env) {
 }
 
 /**
+ * Jasenlista profiilisivun sivupalkkiin.
+ *
+ * Kaikille kirjautuneille. Mukana vain se mita profiilisivu muutenkin
+ * nayttaa: nimi, luokka, raidirooli ja valintojen maara. Lukko, killan
+ * arvo ja kirjautumisajat kuuluvat yllapitoon - tama lista on vertailua
+ * varten, ei valvontaa.
+ */
+export async function haeRoster(env) {
+  const raidi = await haeAktiiviRaidi(env);
+  const raidId = raidi ? raidi.id : 0;
+
+  const rivit = await env.DB.prepare(
+    `SELECT u.username, u.character_name, u.first_name, u.last_name,
+            u.class, u.raid_role,
+            (SELECT COUNT(*) FROM picks p
+              WHERE p.user_id = u.id AND p.raid_id = ?) AS valintoja
+       FROM users u
+      WHERE u.protected = 0
+      ORDER BY
+        COALESCE(NULLIF(u.first_name, ''), NULLIF(u.character_name, ''),
+                 u.username) COLLATE NOCASE`
+  )
+    .bind(raidId)
+    .all();
+
+  return { paikkoja: PAIKAT.length, jasenet: rivit.results ?? [] };
+}
+
+/**
  * Aktiivinen raidi, sen itemit ja kayttajan omat valinnat yhdella kutsulla.
  *
  * Kaikki kolme tarvitaan samaan nakymaan, joten niiden hakeminen erikseen

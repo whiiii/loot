@@ -19,7 +19,7 @@ import {
   uusiTunnus,
   verifyPassword,
 } from "./auth.js";
-import { haeNakyma, tallennaValinta } from "./valinnat.js";
+import { haeNakyma, haeRoster, tallennaValinta } from "./valinnat.js";
 import { haeItemTiedot } from "./itemit.js";
 import {
   asetaLukko,
@@ -164,16 +164,29 @@ async function rajapinta(request, env, polku) {
   const kayttaja = await haeKayttaja(env, request);
   if (!kayttaja) return json({ error: "Ei kirjautunut." }, 401);
 
+  // Jasenlista profiilisivun sivupalkkiin.
+  //
+  // Kaikille kirjautuneille, koska koko listan tarkoitus on etta raideri
+  // nakee mita muut ovat valinneet. Vain se mita profiilisivu nayttaa -
+  // ei lukkoja, rooleja eika kirjautumisaikoja, jotka kuuluvat
+  // yllapitoon.
+  if (polku === "/api/roster") {
+    return json({ ok: true, ...(await haeRoster(env)) });
+  }
+
   if (polku === "/api/nakyma") {
-    // Officer voi katsoa toisen profiilin samalla nakymalla. Oma profiili
-    // ja toisen katselu ovat sama ruutu, joten ne ovat sama rajapintakin -
-    // kaksi erillista olisi kaksi paikkaa jotka voivat ajautua erilleen.
+    // Oma profiili ja toisen katselu ovat sama ruutu, joten ne ovat sama
+    // rajapintakin - kaksi erillista olisi kaksi paikkaa jotka voivat
+    // ajautua erilleen.
+    //
+    // Toisen profiilin saa katsoa kuka tahansa kirjautunut: valinnat ovat
+    // killan sisaista tietoa, ja niiden vertailu on koko sivuston
+    // tarkoitus. Muokata saa vain omaansa, ja sen ratkaisee tallennus -
+    // ei tama.
     const katso = new URL(request.url).searchParams.get("username") ?? "";
     let kohde = kayttaja;
 
     if (katso && katso.toLowerCase() !== kayttaja.username.toLowerCase()) {
-      if (!onOfficer(kayttaja)) return json({ error: "Vain officerille." }, 403);
-
       kohde = await haeKayttajaNimella(env, katso);
       if (!kohde) return json({ error: "Käyttäjää ei löydy." }, 404);
     }

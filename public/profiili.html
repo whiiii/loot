@@ -41,22 +41,35 @@
   <!-- Lause yhden elementin sisassa. Ilman sita jokainen sana on oma
        asettelualkio ja ne levittyvat palkin leveydelle. -->
   <span>Katselet jäsenen <strong id="katseltava"></strong> profiilia</span>
-  <a href="/yllapito">← Takaisin ylläpitoon</a>
+  <a href="/profiili">← Oma profiili</a>
 </div>
 
-<main class="hahmo">
-  <div class="sarake vasen" id="vasen"></div>
-  <div class="keski">
-    <div class="hahmo-otsikko">
-      <strong id="nimi">…</strong>
-      <span id="rooli"></span>
+<div class="sivuasettelu">
+
+  <!-- Jäsenlista kaikille: valintojen vertailu on koko sivuston
+       tarkoitus, eikä se ole officerin yksinoikeus. -->
+  <aside class="roster">
+    <div class="roster-otsikko">Jäsenet</div>
+    <div id="roster-lista" class="roster-lista">
+      <p class="himmea">Ladataan…</p>
     </div>
-    <img id="hahmokuva" src="/staattinen/hahmo.png" alt="">
-    <div class="keski-tyhja" id="keski-tyhja" hidden>Hahmo</div>
-  </div>
-  <div class="sarake oikea" id="oikea"></div>
-  <div class="ala" id="ala"></div>
-</main>
+  </aside>
+
+  <main class="hahmo">
+    <div class="sarake vasen" id="vasen"></div>
+    <div class="keski">
+      <div class="hahmo-otsikko">
+        <strong id="nimi">…</strong>
+        <span id="rooli"></span>
+      </div>
+      <img id="hahmokuva" src="/staattinen/hahmo.png" alt="">
+      <div class="keski-tyhja" id="keski-tyhja" hidden>Hahmo</div>
+    </div>
+    <div class="sarake oikea" id="oikea"></div>
+    <div class="ala" id="ala"></div>
+  </main>
+
+</div>
 
 <!-- Itemin valinta -->
 <div class="peite" id="peite" hidden>
