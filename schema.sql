@@ -24,6 +24,10 @@ CREATE TABLE IF NOT EXISTS settings (
 -- roolista jokaisella pyynnolla, ei kirjautumishetkella tallennetusta
 -- tiedosta - niin roolin muutos astuu voimaan heti eika selain voi
 -- vaittaa olevansa officer.
+--
+-- Yllapitotunnus on officer jolla on protected = 1. Se ei ole oma roolinsa
+-- vaan ominaisuus: tunnus tarvitsee officerin oikeudet, mutta siihen ei saa
+-- kohdistua yhtaan toimea.
 CREATE TABLE IF NOT EXISTS users (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   username       TEXT NOT NULL COLLATE NOCASE UNIQUE,
@@ -45,6 +49,13 @@ CREATE TABLE IF NOT EXISTS users (
   -- Lukittu profiili: valinnat on tehty eika niita voi muuttaa ennen kuin
   -- officer avaa lukon.
   locked         INTEGER NOT NULL DEFAULT 0,
+
+  -- Suojattu tunnus: sivuston varauloskaynti. Silla paasee sisaan
+  -- silloinkin kun officer-oikeudet ovat jostain syysta kadonneet, joten
+  -- siihen ei saa kohdistua yhtaan toimea - ei roolin vaihtoa, lukitusta,
+  -- poistoa eika hahmotietojen muokkausta. Asetetaan kasin SQL:lla, koska
+  -- rajapinnan kautta annettava suojaus ei olisi suojaus.
+  protected      INTEGER NOT NULL DEFAULT 0,
 
   created_at     TEXT NOT NULL DEFAULT (datetime('now')),
   last_login_at  TEXT,
@@ -183,5 +194,5 @@ CREATE TABLE IF NOT EXISTS item_cache (
 );
 
 
-INSERT INTO settings (key, value) VALUES ('schema_version', '5')
+INSERT INTO settings (key, value) VALUES ('schema_version', '6')
   ON CONFLICT(key) DO UPDATE SET value = excluded.value;

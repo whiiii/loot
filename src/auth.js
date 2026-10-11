@@ -146,7 +146,7 @@ export async function haeKayttaja(env, request) {
   const rivi = await env.DB.prepare(
     `SELECT u.id, u.username, u.role, u.character_name,
             u.first_name, u.last_name, u.class, u.raid_role,
-            u.avatar_key, u.locked
+            u.avatar_key, u.locked, u.protected
        FROM sessions s
        JOIN users u ON u.id = s.user_id
       WHERE s.token = ? AND s.expires_at > datetime('now')`
@@ -159,4 +159,17 @@ export async function haeKayttaja(env, request) {
 
 export function onOfficer(kayttaja) {
   return !!kayttaja && kayttaja.role === "officer";
+}
+
+/**
+ * Suojattu tunnus eli sivuston varauloskaynti.
+ *
+ * Oma lippunsa eika rooli: tunnus tarvitsee officerin oikeudet, joten
+ * roolin paalle sita ei voi rakentaa. Suojaus tarkoittaa etta siihen ei
+ * kohdistu yhtaan toimea - ei roolin vaihtoa, lukitusta, poistoa eika
+ * hahmotietojen muokkausta. Muuten se ei olisi varauloskaynti: joku ehtisi
+ * sulkea sen ennen kuin sita tarvitaan.
+ */
+export function onSuojattu(kayttaja) {
+  return !!kayttaja && !!kayttaja.protected;
 }

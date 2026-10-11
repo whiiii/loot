@@ -2,7 +2,7 @@
  * Officerin tyokalut: kayttajalista, lukot ja vienti addoniin.
  */
 import { haeAktiiviRaidi, PAIKAT } from "./valinnat.js";
-import { hashPassword } from "./auth.js";
+import { hashPassword, onSuojattu } from "./auth.js";
 import { haeItemTiedot } from "./itemit.js";
 import {
   LUOKAN_ROOLIT,
@@ -35,6 +35,25 @@ const PERUSTEET = new Set(["prio", "main", "off", "muu"]);
  */
 const HAHMONIMI =
   "COALESCE(NULLIF(u.first_name, ''), NULLIF(u.character_name, ''), u.username)";
+
+/**
+ * Kieltaa toimen jos kohde on suojattu yllapitotunnus.
+ *
+ * Suojattu tunnus on sivuston varauloskaynti: silla paasee sisaan kun
+ * officer-oikeudet ovat jostain syysta kadonneet. Se ei auta jos joku
+ * ehtii ensin poistaa, lukita tai alentaa sen - joten mikaan toimi ei
+ * kohdistu siihen, ei edes toisen officerin tekemana.
+ *
+ * Tarkistus on jokaisessa funktiossa erikseen eika yhdessa reitityksen
+ * kohdassa: uusi toiminto on helppo lisata reitteihin ja unohtaa tasta.
+ */
+function esta(kohde, mita) {
+  if (!onSuojattu(kohde)) return null;
+  return {
+    error: `Ylläpitotunnusta ei voi ${mita}. Se on varauloskäynti.`,
+    status: 403,
+  };
+}
 
 /** Selkokielinen virheilmoitus kelpaamattomasta luokka-rooli-parista. */
 function rooliVirhe(luokka, rooli) {
@@ -75,7 +94,7 @@ export async function haeKayttajat(env) {
 
   const rivit = await env.DB.prepare(
     `SELECT u.id, u.username, u.character_name, u.first_name, u.last_name,
-            u.class, u.raid_role, u.role, u.locked, u.avatar_key,
+            u.class, u.raid_role, u.role, u.locked, u.protected, u.avatar_key,
             u.created_at, u.last_login_at,
             (SELECT COUNT(*) FROM picks p
               WHERE p.user_id = u.id AND p.raid_id = ?) AS valintoja,
@@ -86,6 +105,7 @@ export async function haeKayttajat(env) {
                                AND ${HISTORIA_OSUU})) AS saatuja
        FROM users u
       ORDER BY
+        u.protected DESC,
         CASE u.role WHEN 'officer' THEN 0 WHEN 'raider' THEN 1 ELSE 2 END,
         u.username COLLATE NOCASE`
   )
@@ -107,12 +127,15 @@ export async function haeKayttajat(env) {
  */
 export async function asetaLukko(env, actor, username, locked) {
   const kohde = await env.DB.prepare(
-    "SELECT id, username, locked FROM users WHERE username = ?"
+    "SELECT id, username, locked, protected FROM users WHERE username = ?"
   )
     .bind(username)
     .first();
 
   if (!kohde) return { error: "Käyttäjää ei löydy.", status: 404 };
+
+  const esto = esta(kohde, "lukita");
+  if (esto) return esto;
 
   await env.DB.prepare("UPDATE users SET locked = ? WHERE id = ?")
     .bind(locked ? 1 : 0, kohde.id)
@@ -135,12 +158,16 @@ export async function vaihdaRooli(env, actor, username, rooli) {
   if (!ROOLIT.includes(rooli)) return { error: "Tuntematon rooli.", status: 400 };
 
   const kohde = await env.DB.prepare(
-    "SELECT id, username, role FROM users WHERE username = ?"
+    "SELECT id, username, role, protected FROM users WHERE username = ?"
   )
     .bind(username)
     .first();
 
   if (!kohde) return { error: "Käyttäjää ei löydy.", status: 404 };
+
+  const esto = esta(kohde, "alentaa");
+  if (esto) return esto;
+
   if (kohde.role === rooli) return { ok: true, username: kohde.username, role: rooli };
 
   if (kohde.role === "officer" && rooli !== "officer") {
@@ -247,12 +274,15 @@ export async function luoKayttaja(env, actor, tiedot) {
  */
 export async function poistaKayttaja(env, actor, username) {
   const kohde = await env.DB.prepare(
-    "SELECT id, username, role FROM users WHERE username = ?"
+    "SELECT id, username, role, protected FROM users WHERE username = ?"
   )
     .bind(username)
     .first();
 
   if (!kohde) return { error: "Käyttäjää ei löydy.", status: 404 };
+
+  const esto = esta(kohde, "poistaa");
+  if (esto) return esto;
 
   if (kohde.username.toLowerCase() === String(actor).toLowerCase()) {
     return { error: "Et voi poistaa omaa tunnustasi.", status: 409 };
@@ -293,12 +323,21 @@ export async function asetaSalasana(env, actor, username, salasana) {
   }
 
   const kohde = await env.DB.prepare(
-    "SELECT id, username FROM users WHERE username = ?"
+    "SELECT id, username, protected FROM users WHERE username = ?"
   )
     .bind(username)
     .first();
 
   if (!kohde) return { error: "Käyttäjää ei löydy.", status: 404 };
+
+  // Suojattu tunnus saa vaihtaa oman salasanansa, kukaan muu ei. Jos joku
+  // muu voisi, varauloskaynti olisi hanen hallussaan eika sinun.
+  if (onSuojattu(kohde) && kohde.username.toLowerCase() !== String(actor).toLowerCase()) {
+    return {
+      error: "Ylläpitotunnuksen salasanan voi vaihtaa vain se itse.",
+      status: 403,
+    };
+  }
 
   const tiiviste = await hashPassword(salasana);
 
@@ -324,12 +363,17 @@ export async function asetaSalasana(env, actor, username, salasana) {
  */
 export async function paivitaHahmo(env, actor, username, muutokset) {
   const kohde = await env.DB.prepare(
-    "SELECT id, username, class, raid_role FROM users WHERE username = ?"
+    "SELECT id, username, class, raid_role, protected FROM users WHERE username = ?"
   )
     .bind(username)
     .first();
 
   if (!kohde) return { error: "Käyttäjää ei löydy.", status: 404 };
+
+  // Suojattu tunnus ei ole hahmo: ei luokkaa, ei raidiroolia, ei nimea
+  // pelissa.
+  const esto = esta(kohde, "muokata hahmona");
+  if (esto) return esto;
 
   const sallitut = {
     first_name: (v) => String(v).trim().slice(0, 40),
@@ -514,7 +558,7 @@ export async function tuoHistoria(env, actor, teksti) {
 export async function haeKayttajaNimella(env, username) {
   return await env.DB.prepare(
     `SELECT id, username, role, character_name, first_name, last_name,
-            class, raid_role, avatar_key, locked
+            class, raid_role, avatar_key, locked, protected
        FROM users WHERE username = ?`
   )
     .bind(username)
@@ -564,11 +608,14 @@ export async function teeVienti(env) {
   const raidi = await haeAktiiviRaidi(env);
   if (!raidi) return { error: "Aktiivista raidia ei ole.", status: 409 };
 
+  // Suojattu yllapitotunnus jatetaan ulos kaikkialta: se ei ole hahmo eika
+  // kuulu raidiin, ja addonin listassa se olisi vain rivi jolle ei voi
+  // jakaa mitaan.
   const rivit = await env.DB.prepare(
     `SELECT ${HAHMONIMI} AS hahmo, p.slot_key, p.item_id
        FROM picks p
        JOIN users u ON u.id = p.user_id
-      WHERE p.raid_id = ?
+      WHERE p.raid_id = ? AND u.protected = 0
       ORDER BY hahmo COLLATE NOCASE, p.slot_key`
   )
     .bind(raidi.id)
@@ -584,6 +631,7 @@ export async function teeVienti(env) {
        SELECT ${HAHMONIMI} AS hahmo, COUNT(*) AS n
          FROM loot_history h
          JOIN users u ON u.id = h.user_id
+        WHERE u.protected = 0
         GROUP BY hahmo
        UNION ALL
        SELECT h.winner AS hahmo, COUNT(*) AS n
@@ -598,6 +646,7 @@ export async function teeVienti(env) {
   const kayttajat = await env.DB.prepare(
     `SELECT ${HAHMONIMI} AS hahmo, u.username, u.first_name, u.last_name
        FROM users u
+      WHERE u.protected = 0
       ORDER BY hahmo COLLATE NOCASE`
   ).all();
 

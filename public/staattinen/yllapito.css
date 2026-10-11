@@ -86,6 +86,18 @@
 .merkki.lukko  { color: var(--huomio); border-color: var(--huomio-reuna); background: var(--huomio-tausta); }
 .merkki.rooli  { color: var(--himmea); border-color: var(--reuna); background: transparent; }
 
+/* Ylläpitotunnus.
+   Kulta erottaa sen listasta heti, ja tyhjät sarakkeet kertovat lopun:
+   rivi ei ole hahmo eikä sille voi tehdä mitään. */
+.merkki.yllapito {
+  color: var(--kulta);
+  border-color: var(--kulta-tumma);
+  background: transparent;
+  letter-spacing: .04em;
+}
+.lista tr.yllapitorivi { background: rgba(201,162,39,.035); }
+.lista tr.yllapitorivi td { border-bottom-color: rgba(201,162,39,.12); }
+
 .roolivalinta {
   padding: .25rem .4rem;
   background: var(--syva);

@@ -14,6 +14,7 @@ import {
   hashPassword,
   lueEvasteet,
   onOfficer,
+  onSuojattu,
   poistaEvaste,
   uusiTunnus,
   verifyPassword,
@@ -82,6 +83,11 @@ async function sivu(request, env, polku) {
   if (polku === "/profiili") {
     if (!kayttaja) {
       return Response.redirect(new URL("/kirjaudu", request.url).toString(), 302);
+    }
+    // Yllapitotunnuksella ei ole hahmoa, joten hahmolomake olisi sille
+    // tyhja sivu jolle ei voi tallentaa mitaan.
+    if (onSuojattu(kayttaja)) {
+      return Response.redirect(new URL("/yllapito", request.url).toString(), 302);
     }
     return tiedosto(request, env, "/profiili.html");
   }
@@ -191,7 +197,9 @@ async function rajapinta(request, env, polku) {
   }
 
   if (polku === "/api/kayttajat") {
-    return json({ ok: true, ...(await haeKayttajat(env)) });
+    // Oma tunnus mukaan: lista tarvitsee sen tietaakseen mitka napit ovat
+    // omalla rivilla. Nakyma ei ole suojaus - palvelin tarkistaa saman.
+    return json({ ok: true, me: kayttaja.username, ...(await haeKayttajat(env)) });
   }
 
   if (polku === "/api/lukko" && request.method === "POST") {
