@@ -75,22 +75,20 @@ a.linkkinappi[hidden] { display: none; }
 /* Sivun asettelu: jasenlista vasemmalla, hahmoikkuna sen oikealla
    puolella. Lista on sticky, jotta se pysyy nakyvissa kun hahmoikkunaa
    vierittaa. */
-/* Koko sisalto keskitetaan yhtena ryhmana: jos vain hahmoikkuna
-   keskitettaisiin, jasenlista jaisi ruudun vasempaan laitaan ja
-   kokonaisuus nayttaisi valuvan sivuun. */
-.sivuasettelu {
-  max-width: 1120px;
-  margin: 0 auto;
-  display: flex;
-  align-items: flex-start;
-  gap: 1rem;
-  padding: .9rem 1rem 0;
-}
+/* Roster kiinnitetaan sivun vasempaan laitaan ja hahmoikkuna keskitetaan
+   koko leveydelle.
+
+   Aiemmin molemmat olivat samassa flex-rivissa, jolloin hahmoikkuna
+   keskittyi rosterin viereen jaavaan tilaan eika sivulle - ja nayttti
+   siksi siirtyneen oikealle. Kun roster ei vie asettelussa tilaa,
+   keskitys on oikea. */
+.sivuasettelu { padding: .9rem 1rem 0; }
 
 .roster {
-  flex: 0 0 190px;
-  position: sticky;
+  position: fixed;
+  left: 1rem;
   top: 62px;
+  width: 190px;
   max-height: calc(100vh - 76px);
   display: flex;
   flex-direction: column;
@@ -98,6 +96,7 @@ a.linkkinappi[hidden] { display: none; }
   border-radius: var(--pyoristys);
   background: var(--paneeli);
   overflow: hidden;
+  z-index: 5;
 }
 
 .roster-otsikko {
@@ -171,17 +170,22 @@ a.linkkinappi[hidden] { display: none; }
   background: rgba(201, 162, 39, .1);
 }
 
-/* Kapealla naytolla lista menee hahmoikkunan ylapuolelle: 190 pikselia
-   sivussa jattaisi itemipalkeille liian vahan tilaa. */
-@media (max-width: 900px) {
-  .sivuasettelu { flex-direction: column; }
-  .roster { position: static; flex: 1 1 auto; width: 100%; max-height: 220px; }
+/* Kapealla naytolla kiinnitetty roster menisi hahmoikkunan paalle, joten
+   se palaa tavalliseksi lohkoksi sen ylapuolelle.
+   Raja on hahmoikkunan 840 px plus roster molemmin puolin. */
+@media (max-width: 1260px) {
+  .sivuasettelu { max-width: 880px; margin: 0 auto; }
+  .roster {
+    position: static;
+    width: 100%;
+    max-height: 220px;
+    margin-bottom: .75rem;
+  }
 }
 
 /* Hahmoikkuna.
    Kaksi saraketta reunoilla, keskella tyhja alue ja alla kolme asepaikkaa. */
 .hahmo {
-  flex: 1 1 auto;
   min-width: 0;
   max-width: 840px;
   margin: 0 auto;
