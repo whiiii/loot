@@ -87,14 +87,25 @@
 .merkki.rooli  { color: var(--himmea); border-color: var(--reuna); background: transparent; }
 
 /* Ylläpitotunnus.
-   Rivi on rakenteeltaan samanlainen kuin muut — pelkkä merkki erottaa sen.
-   Oma taustaväri tai leveä solu tekisi siitä lohkareen keskelle listaa. */
+   Taulukon yläpuolella omalla rivillään: se ei ole profiili, joten
+   listassa sen jokainen sarake olisi tyhjä. */
 .merkki.yllapito {
   color: var(--kulta);
   border-color: var(--kulta-tumma);
   background: transparent;
   letter-spacing: .04em;
 }
+
+.yllapitotieto {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  margin: 0 0 .9rem;
+  font-size: .84rem;
+  color: var(--himmea);
+}
+.yllapitotieto[hidden] { display: none; }
+.yllapitotieto .nappi-kuvake { margin-left: auto; }
 
 .roolivalinta {
   padding: .25rem .4rem;

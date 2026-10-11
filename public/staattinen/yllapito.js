@@ -137,22 +137,21 @@ function piirra(users) {
   const tbody = $("kayttajat");
   tbody.innerHTML = "";
 
+  piirraYllapito(users);
+
   if (users.length === 0) {
     tbody.innerHTML = '<tr><td colspan="9" class="himmea">Ei käyttäjiä.</td></tr>';
     return;
   }
 
   for (const u of users) {
-    const tr = document.createElement("tr");
+    // Ylläpitotunnus ei ole profiili: ei luokkaa, ei valintoja, ei yhtään
+    // toimintoa. Listassa se on rivi jonka jokainen sarake on tyhjä, ja
+    // sellainen näyttää rikkinäiseltä riippumatta siitä miten sen muotoilee.
+    // Siksi se on taulukon yläpuolella omalla rivillään.
+    if (u.protected) continue;
 
-    // Ylläpitotunnus ei ole hahmo vaan varauloskäynti, joten sille ei ole
-    // mitään sanottavaa yhdessäkään sarakkeessa. Rivi vedetään yhdeksi
-    // soluksi: seitsemän peräkkäistä viivaa näyttäisi rikkinäiseltä, ja
-    // yksi lause kertoo saman.
-    if (u.protected) {
-      tbody.appendChild(yllapitoRivi(u));
-      continue;
-    }
+    const tr = document.createElement("tr");
 
     tr.appendChild(solu(u.username));
 
@@ -356,47 +355,41 @@ function solu(teksti) {
 }
 
 /**
- * Suojatun yllapitotunnuksen rivi.
+ * Suojatut yllapitotunnukset taulukon ylapuolelle.
  *
- * Tasmalleen sama solurakenne kuin muilla riveilla: yhdeksan tavallista
- * solua, ei colspania eika omia display-saantoja. Erilainen rakenne
- * kaattaa taulukon rivikorkeuden, ja rivi venyi moninkertaiseksi.
- *
- * Tyhjat solut jatetaan oikeasti tyhjiksi. Viiva jokaisessa sarakkeessa
- * nayttaisi silta kuin tieto puuttuisi, vaikka sita ei ole olemassakaan.
+ * Oma rivinsa eika taulukon rivi: tunnuksella ei ole luokkaa, valintoja
+ * eika yhtaan toimintoa, joten jokainen sarake olisi tyhja. Se ei ole
+ * profiili, joten se ei kuulu profiililistaan.
  */
-function yllapitoRivi(u) {
-  const tr = document.createElement("tr");
+function piirraYllapito(users) {
+  const laatikko = $("yllapitotieto");
+  laatikko.innerHTML = "";
 
-  tr.appendChild(solu(u.username));
+  const suojatut = users.filter((u) => u.protected);
+  laatikko.hidden = suojatut.length === 0;
+  if (laatikko.hidden) return;
 
-  const hahmo = document.createElement("td");
-  const tunniste = merkki("Ylläpito", "yllapito");
-  tunniste.title = "Sivuston varauloskäynti — ei hahmo, ei muokattavissa.";
-  hahmo.appendChild(tunniste);
-  tr.appendChild(hahmo);
+  for (const u of suojatut) {
+    laatikko.appendChild(merkki("Ylläpito", "yllapito"));
 
-  // Luokka, rooli, rank, valinnat, saatu, tila.
-  for (let i = 0; i < 6; i++) tr.appendChild(solu(""));
+    const teksti = document.createElement("span");
+    teksti.textContent =
+      `${u.username} — sivuston varauloskäynti. Ei hahmo, ei muokattavissa.`;
+    laatikko.appendChild(teksti);
 
-  const toiminto = document.createElement("td");
-
-  // Salasanan saa vaihtaa vain tunnus itse, joten nappi on vain omalla
-  // rivilla. Muualla se lupaisi toimen jota palvelin ei salli.
-  if (minaOlen && minaOlen.toLowerCase() === u.username.toLowerCase()) {
-    toiminto.className = "toiminnot";
-    toiminto.appendChild(
-      teeNappi({
-        teksti: "Salasana",
-        kuvake: KUVAKE.avain,
-        luokka: "nappi-hillitty",
-        toiminto: () => vaihdaSalasana(u.username),
-      })
-    );
+    // Salasanan saa vaihtaa vain tunnus itse, joten nappi nakyy vain
+    // omalla kohdalla. Muualla se lupaisi toimen jota palvelin ei salli.
+    if (minaOlen && minaOlen.toLowerCase() === u.username.toLowerCase()) {
+      laatikko.appendChild(
+        teeNappi({
+          teksti: "Salasana",
+          kuvake: KUVAKE.avain,
+          luokka: "nappi-hillitty",
+          toiminto: () => vaihdaSalasana(u.username),
+        })
+      );
+    }
   }
-
-  tr.appendChild(toiminto);
-  return tr;
 }
 
 function merkki(teksti, luokka) {
