@@ -57,8 +57,12 @@ async function sivu(request, env, polku) {
   const porttiAuki = await onPorttiAuki(env, request);
 
   // Portin takana ei näytetä mitään muuta kuin portti itse.
+  //
+  // Kuvake on poikkeus: se ei kerro mitään eikä sitä kannata piilottaa,
+  // ja ilman sitä selaimen välilehti olisi tyhjä juuri sillä sivulla jolla
+  // käyttäjä pisimpään viipyy — kirjautumisessa.
   if (!porttiAuki) {
-    if (polku === "/" || polku.startsWith("/staattinen/")) {
+    if (polku === "/" || polku === "/favicon.ico" || polku.startsWith("/staattinen/")) {
       return tiedosto(request, env, polku === "/" ? "/portti.html" : polku);
     }
     return Response.redirect(new URL("/", request.url).toString(), 302);
