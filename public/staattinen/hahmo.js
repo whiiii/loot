@@ -62,9 +62,9 @@ async function lataa() {
     // Toisen profiili on katseltava, ei muokattava. Muokkaus kuuluu sille
     // jonka profiili se on - officer avaa lukon, raideri valitsee itse.
     if (tila.katselu) {
+      // Kenen profiili on auki nakyy hahmon nimesta ja jasenlistan
+      // korostuksesta, joten erillista ilmoituspalkkia ei tarvita.
       tila.lukittu = true;
-      $("katseluilmoitus").hidden = false;
-      $("katseltava").textContent = hahmonNimi(u);
       $("lukkoilmoitus").hidden = true;
       $("tallenna").hidden = true;
       if (mina.user.role === "officer") naytaOfficerValikko();
@@ -100,6 +100,28 @@ async function lataa() {
  * Kaikille, ei vain officerille: valintojen vertailu on koko sivuston
  * tarkoitus, ja raiderin pitää nähdä kuka muu on varannut saman itemin.
  */
+/**
+ * Mitkä ryhmät käyttäjä on avannut.
+ *
+ * Muistissa vain istunnon ajan: oletus on kiinni, mutta profiilista
+ * toiseen siirtyminen ei saa sulkea sitä mitä käyttäjä juuri avasi.
+ */
+function avatut() {
+  try {
+    return new Set(JSON.parse(sessionStorage.getItem("roster-auki") || "[]"));
+  } catch {
+    return new Set();
+  }
+}
+
+function tallennaAvatut(joukko) {
+  try {
+    sessionStorage.setItem("roster-auki", JSON.stringify([...joukko]));
+  } catch {
+    // Yksityinen ikkuna tai estetty tallennus. Lista toimii silti.
+  }
+}
+
 async function lataaRoster(nykyinen) {
   const sailio = $("roster-lista");
 
@@ -111,41 +133,108 @@ async function lataaRoster(nykyinen) {
       return;
     }
 
-    sailio.innerHTML = "";
-
-    for (const j of d.jasenet) {
-      const rivi = document.createElement("button");
-      rivi.type = "button";
-      rivi.className = "roster-rivi";
-      if (j.username === nykyinen) rivi.classList.add("nyt");
-
-      const nimi = document.createElement("span");
-      nimi.className = "roster-nimi";
-      nimi.textContent = hahmonNimi(j);
-      nimi.style.color = luokanVari(j.class);
-      rivi.appendChild(nimi);
-
-      // Luokka, rooli ja valintojen määrä: niistä näkee kenen profiilia
-      // kannattaa katsoa ja kuka ei ole vielä täyttänyt omaansa.
-      const osat = [];
-      if (LUOKAT[j.class]) osat.push(LUOKAT[j.class].nimi);
-      if (RAIDIROOLIT[j.raid_role]) osat.push(RAIDIROOLIT[j.raid_role]);
-
-      const tiedot = document.createElement("span");
-      tiedot.className = "roster-tiedot";
-      tiedot.textContent =
-        (osat.join(" · ") || "—") + `  ${j.valintoja}/${d.paikkoja}`;
-      rivi.appendChild(tiedot);
-
-      rivi.addEventListener("click", () => {
-        location.href = "/profiili?katso=" + encodeURIComponent(j.username);
-      });
-
-      sailio.appendChild(rivi);
-    }
-
     if (d.jasenet.length === 0) {
       sailio.innerHTML = '<p class="himmea">Ei jäseniä.</p>';
+      return;
+    }
+
+    sailio.innerHTML = "";
+
+    // Luokittain. Järjestys on LUOKAT-listan mukainen, jotta sama luokka
+    // on aina samassa kohdassa — aakkosjärjestys siirtäisi niitä sen
+    // mukaan ketä killassa sattuu olemaan.
+    const ryhmat = new Map();
+    for (const avain of Object.keys(LUOKAT)) ryhmat.set(avain, []);
+    ryhmat.set("", []);
+
+    for (const j of d.jasenet) {
+      const avain = LUOKAT[j.class] ? j.class : "";
+      ryhmat.get(avain).push(j);
+    }
+
+    const auki = avatut();
+
+    for (const [avain, jasenet] of ryhmat) {
+      if (jasenet.length === 0) continue;
+
+      const luokka = LUOKAT[avain];
+
+      const ryhma = document.createElement("div");
+      ryhma.className = "roster-ryhma";
+
+      const otsake = document.createElement("button");
+      otsake.type = "button";
+      otsake.className = "roster-otsake";
+
+      const nuoli = document.createElement("span");
+      nuoli.className = "roster-nuoli";
+      nuoli.textContent = "▶";
+      otsake.appendChild(nuoli);
+
+      const nimi = document.createElement("span");
+      nimi.textContent = luokka ? luokka.nimi : "Ei luokkaa";
+      if (luokka) nimi.style.color = luokka.vari;
+      otsake.appendChild(nimi);
+
+      const luku = document.createElement("span");
+      luku.className = "roster-luku";
+      luku.textContent = jasenet.length;
+      otsake.appendChild(luku);
+
+      const sisalto = document.createElement("div");
+      sisalto.className = "roster-sisalto";
+
+      for (const j of jasenet) {
+        const rivi = document.createElement("button");
+        rivi.type = "button";
+        rivi.className = "roster-rivi";
+        rivi.textContent = hahmonNimi(j);
+        rivi.style.color = luokanVari(j.class);
+        if (j.username === nykyinen) rivi.classList.add("nyt");
+
+        rivi.addEventListener("click", () => {
+          location.href = "/profiili?katso=" + encodeURIComponent(j.username);
+        });
+
+        sisalto.appendChild(rivi);
+      }
+
+      ryhma.appendChild(otsake);
+      ryhma.appendChild(sisalto);
+      sailio.appendChild(ryhma);
+
+      // Korkeus mitataan sisällöstä eikä arvata vakioksi: liian pieni
+      // katkaisisi listan, liian suuri tekisi animaatiosta nykivän.
+      const avaa = (animoi) => {
+        ryhma.classList.add("auki");
+        otsake.setAttribute("aria-expanded", "true");
+        sisalto.style.transition = animoi ? "" : "none";
+        sisalto.style.maxHeight = sisalto.scrollHeight + "px";
+        if (!animoi) requestAnimationFrame(() => (sisalto.style.transition = ""));
+      };
+
+      const sulje = () => {
+        ryhma.classList.remove("auki");
+        otsake.setAttribute("aria-expanded", "false");
+        sisalto.style.maxHeight = "0";
+      };
+
+      sulje();
+      if (auki.has(avain)) avaa(false);
+
+      otsake.addEventListener("click", () => {
+        const nyt = avatut();
+
+        if (ryhma.classList.contains("auki")) {
+          sulje();
+          nyt.delete(avain);
+        } else {
+          avaa(true);
+          nyt.add(avain);
+        }
+
+        tallennaAvatut(nyt);
+      });
     }
   } catch {
     sailio.innerHTML = '<p class="himmea">Lista ei latautunut.</p>';
