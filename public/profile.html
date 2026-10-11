@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Profiili — Loot</title>
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/static/favicon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Marcellus&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono&display=swap">
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/profile.css">
+<link rel="stylesheet" href="/static/dialog.css">
+</head>
+<body class="page">
+
+<header class="topbar">
+  <!-- The page's own action on the left. On the right of the menu it
+       would shift the menu buttons from one page to the next. -->
+  <div class="topbar-left">
+    <button class="small" id="save">Tallenna</button>
+    <span class="dim" id="raid"></span>
+  </div>
+  <nav class="topbar-right nav">
+    <a class="small linkbutton" data-officer href="/admin" hidden>Ylläpito</a>
+    <a class="small linkbutton" data-officer href="/transfer" hidden>Siirto</a>
+    <a class="small linkbutton" data-officer href="/imports" hidden>Tuontihistoria</a>
+    <a class="small linkbutton" data-officer href="/log" hidden>Loki</a>
+    <a class="small linkbutton" href="/profile">Oma profiili</a>
+    <button class="small" id="logout">Kirjaudu ulos</button>
+  </nav>
+</header>
+
+<div id="lock-notice" class="notice" hidden>
+  Profiilisi on lukittu. Valintoja ei voi muuttaa — pyydä officeria avaamaan lukko.
+</div>
+
+<div class="layout">
+
+  <!-- The roster for everyone: comparing picks is the whole point of the
+       site, and it is not an officer's privilege. -->
+  <aside class="roster">
+    <div class="roster-title">Roster</div>
+    <div id="roster-list" class="roster-list">
+      <p class="dim">Ladataan…</p>
+    </div>
+  </aside>
+
+  <main class="sheet">
+    <div class="sheet-column column-left" id="column-left"></div>
+    <div class="portrait">
+      <div class="portrait-title">
+        <strong id="name">…</strong>
+        <span id="role"></span>
+      </div>
+      <img id="portrait-image" src="/static/character.png" alt="">
+      <div class="portrait-empty" id="portrait-empty" hidden>Hahmo</div>
+    </div>
+    <div class="sheet-column column-right" id="column-right"></div>
+    <div class="row-below" id="row-below"></div>
+  </main>
+
+</div>
+
+<!-- The item picker -->
+<div class="overlay" id="overlay" hidden>
+  <div class="picker">
+    <div class="picker-head">
+      <strong id="picker-title"></strong>
+      <button class="small" id="picker-close">Sulje</button>
+    </div>
+    <div class="picker-list" id="picker-list"></div>
+    <button class="small wide" id="picker-clear">Poista valinta</button>
+  </div>
+</div>
+
+<!-- Tooltip. One element moved along with the mouse. -->
+<div id="tooltip" class="wh-tooltip" hidden></div>
+
+<div class="message" id="message"></div>
+
+<script src="/static/gamedata.js"></script>
+<script src="/static/nav.js"></script>
+<script src="/static/dialog.js"></script>
+<script src="/static/profile.js"></script>
+</body>
+</html>

@@ -4,28 +4,28 @@
   "main": "src/index.js",
   "compatibility_date": "2026-09-01",
 
-  // Worker ajetaan ennen staattisia tiedostoja.
+  // The Worker runs before the static files.
   //
-  // Oletuksena Cloudflare tarjoilee public-kansion tiedostot suoraan reunalta
-  // eika Worker nae niita pyyntoja lainkaan. Talla sivustolla se ei kay:
-  // kaikki on yhteisen salasanan takana, eika porttia voi vartioida jos
-  // sivut saa auki sen ohi.
+  // By default Cloudflare serves the public folder's files straight from
+  // the edge and the Worker never sees those requests. That will not do on
+  // this site: everything is behind a shared password, and the gate cannot
+  // be guarded if pages open past it.
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
     "run_worker_first": true,
 
-    // Tiedostot tarjoillaan tasmalleen silla nimella jolla niita pyydetaan.
+    // Files are served under exactly the name they are asked for.
     //
-    // Oletuksena Cloudflare ohjaa '/portti.html' osoitteeseen '/portti'. Kun
-    // Worker pyysi tiedostoa nimella, se sai takaisin uudelleenohjauksen,
-    // ohjasi sen omaan reititykseensa ja paatyi silmukkaan. Reitit paatetaan
-    // taalla, joten tiedostopalvelin ei saa keksia omiaan.
+    // By default Cloudflare redirects '/gate.html' to '/gate'. When the
+    // Worker asked for the file by name, it got a redirect back, routed
+    // that through its own routing and ended up in a loop. The routes are
+    // decided here, so the file server must not invent its own.
     "html_handling": "none",
     "not_found_handling": "none"
   },
 
-  // D1 on SQLite. database_id taytetaan kun kanta on luotu.
+  // D1 is SQLite. database_id is filled in once the database exists.
   "d1_databases": [
     {
       "binding": "DB",

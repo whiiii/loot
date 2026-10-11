@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Siirto — Loot</title>
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/static/favicon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Marcellus&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono&display=swap">
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/profile.css">
+<link rel="stylesheet" href="/static/admin.css">
+<link rel="stylesheet" href="/static/dialog.css">
+</head>
+<body class="page">
+
+<header class="topbar">
+  <div class="topbar-left">
+    <strong>Siirto</strong>
+    <span class="dim" id="raid"></span>
+  </div>
+  <nav class="topbar-right nav">
+    <a class="small linkbutton" data-officer href="/admin">Ylläpito</a>
+    <a class="small linkbutton" data-officer href="/transfer">Siirto</a>
+    <a class="small linkbutton" data-officer href="/imports">Tuontihistoria</a>
+    <a class="small linkbutton" data-officer href="/log">Loki</a>
+    <a class="small linkbutton" href="/profile">Oma profiili</a>
+    <button class="small" id="logout">Kirjaudu ulos</button>
+  </nav>
+</header>
+
+<main class="admin">
+
+  <section>
+    <h2>Vienti addoniin</h2>
+    <p class="dim small-text" id="export-info">
+      Luo teksti, jonka liität addoniin pelissä. Vienti sisältää profiilit,
+      saadut itemit ja killan officerit — addon tarvitsee ne kaikki.
+    </p>
+    <div class="buttons">
+      <button class="button-primary" id="create-export">Luo vienti</button>
+      <button class="small" id="copy" hidden>Kopioi leikepöydälle</button>
+    </div>
+    <textarea id="export" rows="10" spellcheck="false" readonly hidden></textarea>
+  </section>
+
+  <section>
+    <h2>Tuonti addonista</h2>
+    <p class="dim small-text" id="import-info">
+      Liitä addonin <strong>Historia → Luo vienti sivustolle</strong> -teksti.
+      Jaetut itemit merkitään profiileihin. Jokainen tuonti tallentuu omana
+      lokinaan <a href="/imports">Tuontihistoriaan</a>, joten saman viikon
+      eri raidit pysyvät erillään.
+    </p>
+    <textarea id="import" rows="6" spellcheck="false"
+              placeholder="LOOTHIST1&#10;RAID=…&#10;ZONE=Molten Core&#10;SIZE=40&#10;L=18817|Betonimylly|2026-10-10 20:05:00|87|prio|Molten Core"></textarea>
+    <div class="buttons" style="margin-top:.75rem">
+      <input type="text" id="import-label" maxlength="60" class="import-label"
+             placeholder="Lokin nimi, esim. MC 40 ke (vapaaehtoinen)">
+      <button class="button-primary" id="do-import">Tuo loottihistoria</button>
+    </div>
+  </section>
+
+</main>
+
+<div class="message" id="message"></div>
+
+<script src="/static/nav.js"></script>
+<script src="/static/dialog.js"></script>
+<script src="/static/transfer.js"></script>
+</body>
+</html>

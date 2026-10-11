@@ -1,18 +1,17 @@
 /**
- * Tunnistautuminen: salasanat, istunnot ja evästeet.
+ * Authentication: passwords, sessions and cookies.
  */
 
 /**
- * PBKDF2-kierrosten määrä.
+ * The PBKDF2 iteration count.
  *
- * Workersin ilmaistasolla on tiukka suoritinaikaraja yhtä pyyntöä kohden,
- * ja salasanan tiivistäminen on tarkoituksella hidas operaatio — ne kaksi
- * ovat suoraan ristiriidassa. Luku on valittu niin että kirjautuminen mahtuu
- * rajaan selvästi.
+ * Workers' free tier has a tight CPU limit per request, and hashing a
+ * password is deliberately slow — those two are in direct conflict. The
+ * number is chosen so a login fits inside the limit with room to spare.
  *
- * Kierrosmäärä tallennetaan tiivisteen sisään, joten sen voi nostaa
- * myöhemmin ilman että vanhat salasanat lakkaavat toimimasta: vanha tiiviste
- * tarkistetaan omalla luvullaan ja uudet kirjoitetaan uudella.
+ * The iteration count is stored inside the hash, so it can be raised
+ * later without old passwords breaking: an old hash is verified with its
+ * own number and new ones are written with the new one.
  */
 export const PBKDF2_ITERATIONS = 25000;
 
@@ -27,18 +26,18 @@ export async function hashPassword(password, iterations = PBKDF2_ITERATIONS) {
 export async function verifyPassword(password, stored) {
   if (typeof stored !== "string") return false;
 
-  const osat = stored.split("$");
-  if (osat.length !== 4 || osat[0] !== "pbkdf2") return false;
+  const parts = stored.split("$");
+  if (parts.length !== 4 || parts[0] !== "pbkdf2") return false;
 
-  const iterations = parseInt(osat[1], 10);
+  const iterations = parseInt(parts[1], 10);
   if (!Number.isFinite(iterations) || iterations < 1) return false;
 
-  const salt = fromB64(osat[2]);
-  const odotettu = fromB64(osat[3]);
-  if (!salt || !odotettu) return false;
+  const salt = fromB64(parts[2]);
+  const expected = fromB64(parts[3]);
+  if (!salt || !expected) return false;
 
-  const saatu = await derive(password, salt, iterations);
-  return samaAika(saatu, odotettu);
+  const actual = await derive(password, salt, iterations);
+  return constantTimeEqual(actual, expected);
 }
 
 async function derive(password, salt, iterations) {
@@ -58,16 +57,17 @@ async function derive(password, salt, iterations) {
 }
 
 /**
- * Vertailu joka kestää yhtä kauan riippumatta siitä missä kohtaa ero on.
+ * A comparison that takes the same time regardless of where the
+ * difference is.
  *
- * Tavallinen vertailu keskeytyy ensimmäiseen eroavaan tavuun, ja siitä
- * kuluvasta ajasta voi päätellä kuinka monta tavua meni oikein.
+ * An ordinary comparison stops at the first differing byte, and the time
+ * that takes reveals how many bytes were right.
  */
-function samaAika(a, b) {
+function constantTimeEqual(a, b) {
   if (a.length !== b.length) return false;
-  let ero = 0;
-  for (let i = 0; i < a.length; i++) ero |= a[i] ^ b[i];
-  return ero === 0;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+  return diff === 0;
 }
 
 function toB64(bytes) {
@@ -87,63 +87,64 @@ function fromB64(str) {
   }
 }
 
-export function uusiTunnus() {
+export function newToken() {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/* ---------- evästeet ---------- */
+/* ---------- cookies ---------- */
 
-export const EVASTE_PORTTI = "loot_gate";
-export const EVASTE_ISTUNTO = "loot_session";
+export const COOKIE_GATE = "loot_gate";
+export const COOKIE_SESSION = "loot_session";
 
-export function lueEvasteet(request) {
+export function readCookies(request) {
   const raw = request.headers.get("cookie") || "";
   const out = {};
-  for (const pala of raw.split(";")) {
-    const i = pala.indexOf("=");
+  for (const piece of raw.split(";")) {
+    const i = piece.indexOf("=");
     if (i < 0) continue;
-    out[pala.slice(0, i).trim()] = pala.slice(i + 1).trim();
+    out[piece.slice(0, i).trim()] = piece.slice(i + 1).trim();
   }
   return out;
 }
 
 /**
- * Eväste on aina httpOnly: sivun koodi ei pääse siihen käsiksi, joten
- * selaimessa ajettava vieras koodi ei voi lukea istuntoa.
+ * The cookie is always httpOnly: page code cannot reach it, so foreign
+ * code running in the browser cannot read the session.
  */
-export function evaste(nimi, arvo, maxAge) {
-  const osat = [
-    `${nimi}=${arvo}`,
+export function cookie(name, value, maxAge) {
+  const parts = [
+    `${name}=${value}`,
     "Path=/",
     "HttpOnly",
     "Secure",
     "SameSite=Lax",
     `Max-Age=${maxAge}`,
   ];
-  return osat.join("; ");
+  return parts.join("; ");
 }
 
-export function poistaEvaste(nimi) {
-  return `${nimi}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
+export function clearCookie(name) {
+  return `${name}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
 }
 
-/* ---------- istunto ---------- */
+/* ---------- session ---------- */
 
-export const ISTUNTO_KESTO_S = 60 * 60 * 24 * 30;
+export const SESSION_MAX_AGE = 60 * 60 * 24 * 30;
 
 /**
- * Hakee kirjautuneen käyttäjän istuntotunnuksen perusteella.
+ * Looks up the logged-in user by their session token.
  *
- * Rooli luetaan tässä kannasta joka pyynnöllä. Se on tarkoituksellista:
- * jos rooli luettaisiin kirjautumishetkellä tallennetusta tiedosta, officeriksi
- * nostaminen vaatisi uloskirjautumisen - ja alentaminen ei tehoaisi ennen sitä.
+ * The role is read from the database here on every request. That is
+ * deliberate: if the role came from data stored at login, promoting
+ * someone to officer would require a logout — and demoting them would
+ * not take effect until then.
  */
-export async function haeKayttaja(env, request) {
-  const token = lueEvasteet(request)[EVASTE_ISTUNTO];
+export async function getUser(env, request) {
+  const token = readCookies(request)[COOKIE_SESSION];
   if (!token) return null;
 
-  const rivi = await env.DB.prepare(
+  const row = await env.DB.prepare(
     `SELECT u.id, u.username, u.role, u.character_name,
             u.first_name, u.last_name, u.class, u.raid_role,
             u.avatar_key, u.locked, u.protected
@@ -154,22 +155,22 @@ export async function haeKayttaja(env, request) {
     .bind(token)
     .first();
 
-  return rivi || null;
+  return row || null;
 }
 
-export function onOfficer(kayttaja) {
-  return !!kayttaja && kayttaja.role === "officer";
+export function isOfficer(user) {
+  return !!user && user.role === "officer";
 }
 
 /**
- * Suojattu tunnus eli sivuston varauloskaynti.
+ * A protected account, i.e. the site's emergency exit.
  *
- * Oma lippunsa eika rooli: tunnus tarvitsee officerin oikeudet, joten
- * roolin paalle sita ei voi rakentaa. Suojaus tarkoittaa etta siihen ei
- * kohdistu yhtaan toimea - ei roolin vaihtoa, lukitusta, poistoa eika
- * hahmotietojen muokkausta. Muuten se ei olisi varauloskaynti: joku ehtisi
- * sulkea sen ennen kuin sita tarvitaan.
+ * Its own flag rather than a role: the account needs officer rights, so
+ * it cannot be built on top of the role. Protected means no action
+ * touches it — no role change, no lock, no deletion and no character
+ * edits. Otherwise it would not be an emergency exit: someone could
+ * close it before it is needed.
  */
-export function onSuojattu(kayttaja) {
-  return !!kayttaja && !!kayttaja.protected;
+export function isProtected(user) {
+  return !!user && !!user.protected;
 }

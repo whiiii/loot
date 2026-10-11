@@ -1,0 +1,95 @@
+/* The confirmation dialog.
+   The browser's own confirm() cannot be styled and shows the domain,
+   which makes an action on your own site look like an outside warning. */
+
+.dlg-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(6, 4, 2, .78);
+  backdrop-filter: blur(3px);
+}
+.dlg-overlay[hidden] { display: none; }
+
+.dlg {
+  width: 100%;
+  max-width: 400px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--gold);
+  border-radius: var(--radius-lg);
+  padding: 1.4rem 1.5rem 1.25rem;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .65);
+}
+
+.dlg h3 {
+  font-family: var(--font-heading);
+  margin: 0 0 .5rem;
+  font-size: 1.05rem;
+  font-weight: 400;
+  letter-spacing: .03em;
+  color: var(--gold);
+}
+
+.dlg p {
+  margin: 0 0 1.25rem;
+  font-size: .88rem;
+  line-height: 1.55;
+  color: var(--text);
+  white-space: pre-line;
+}
+
+.dlg-input {
+  width: 100%;
+  margin: 0 0 1rem;
+  padding: .6rem .7rem;
+  background: var(--sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+}
+.dlg-input:focus { outline: none; border-color: var(--gold); }
+.dlg-input[hidden] { display: none; }
+
+.dlg-error {
+  margin: -.6rem 0 1rem;
+  font-size: .82rem;
+  color: var(--error);
+}
+.dlg-error[hidden] { display: none; }
+
+.dlg-buttons {
+  display: flex;
+  gap: .6rem;
+}
+
+.dlg-buttons button {
+  flex: 1;
+  width: auto;
+  padding: .55rem .9rem;
+  font-size: .86rem;
+}
+
+.dlg-cancel {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.dlg-cancel:hover { background: var(--hover); filter: none; }
+
+/* The warning variant: the same structure, a different colour. Used
+   where the consequence cannot be undone without another person's
+   help. */
+.dlg.warning {
+  border-top-color: var(--error-border);
+}
+.dlg.warning h3 { color: var(--error); }
+.dlg.warning .dlg-confirm {
+  background: var(--error-border);
+  color: var(--gold-text);
+}

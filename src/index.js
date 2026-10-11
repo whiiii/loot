@@ -1,376 +1,362 @@
 /**
- * Loot — reititys.
+ * Loot — routing.
  *
- * Kaikki pyynnöt kulkevat tämän läpi, myös staattiset sivut. Se on
- * tarkoituksellista: sivusto on yhteisen salasanan takana, eikä porttia voi
- * vartioida jos tiedostot tarjoillaan Workerin ohi.
+ * Every request goes through here, static pages included. That is
+ * deliberate: the site sits behind a shared password, and a gate cannot
+ * be guarded if files are served past the Worker.
  */
 import {
-  EVASTE_PORTTI,
-  EVASTE_ISTUNTO,
-  ISTUNTO_KESTO_S,
-  evaste,
-  haeKayttaja,
-  hashPassword,
-  lueEvasteet,
-  onOfficer,
-  onSuojattu,
-  poistaEvaste,
-  uusiTunnus,
+  COOKIE_GATE,
+  COOKIE_SESSION,
+  SESSION_MAX_AGE,
+  clearCookie,
+  cookie,
+  getUser,
+  isOfficer,
+  isProtected,
+  newToken,
+  readCookies,
   verifyPassword,
 } from "./auth.js";
-import { haeNakyma, haeRoster, tallennaValinta } from "./valinnat.js";
-import { haeItemTiedot } from "./itemit.js";
+import { getRoster, getView, savePick } from "./picks.js";
+import { getItemDetails } from "./items.js";
 import {
-  asetaLukko,
-  asetaSalasana,
-  haeKayttajaNimella,
-  haeKayttajat,
-  luoKayttaja,
-  lukitseOma,
-  paivitaHahmo,
-  poistaKayttaja,
-  teeVienti,
-  tuoHistoria,
-  vaihdaRooli,
-} from "./yllapito.js";
-import { haeTuonnit, haeTuonti, poistaTuonti } from "./tuonnit.js";
-import { haeLoki, poistaLokirivi } from "./loki.js";
+  buildExport,
+  createUser,
+  deleteUser,
+  getUserByName,
+  getUsers,
+  importHistory,
+  lockOwn,
+  setLock,
+  setPassword,
+  setRole,
+  updateCharacter,
+} from "./admin.js";
+import { deleteImport, getImport, getImports } from "./imports.js";
+import { deleteLogRow, getLog } from "./log.js";
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    const polku = url.pathname;
+    const path = url.pathname;
 
     try {
-      if (polku.startsWith("/api/")) {
-        return await rajapinta(request, env, polku);
+      if (path.startsWith("/api/")) {
+        return await api(request, env, path);
       }
-      return await sivu(request, env, polku);
+      return await page(request, env, path);
     } catch (err) {
       return json({ ok: false, error: String(err) }, 500);
     }
   },
 };
 
-/* ---------- sivut ---------- */
+/* ---------- pages ---------- */
 
-async function sivu(request, env, polku) {
-  const porttiAuki = await onPorttiAuki(env, request);
+/**
+ * Officer-only pages. The APIs check the same thing separately, so
+ * hiding a page is convenience rather than protection.
+ */
+const OFFICER_PAGES = {
+  "/admin": "/admin.html",
+  "/imports": "/imports.html",
+  "/transfer": "/transfer.html",
+  "/log": "/log.html",
+};
 
-  // Portin takana ei näytetä mitään muuta kuin portti itse.
+async function page(request, env, path) {
+  const gateOpen = await isGateOpen(env, request);
+
+  // Behind the gate nothing is shown but the gate itself.
   //
-  // Kuvake on poikkeus: se ei kerro mitään eikä sitä kannata piilottaa,
-  // ja ilman sitä selaimen välilehti olisi tyhjä juuri sillä sivulla jolla
-  // käyttäjä pisimpään viipyy — kirjautumisessa.
-  if (!porttiAuki) {
-    if (polku === "/" || polku === "/favicon.ico" || polku.startsWith("/staattinen/")) {
-      return tiedosto(request, env, polku === "/" ? "/portti.html" : polku);
+  // The favicon is an exception: it tells nothing and is not worth
+  // hiding, and without it the browser tab would be blank on exactly the
+  // page a user lingers on longest — the login.
+  if (!gateOpen) {
+    if (path === "/" || path === "/favicon.ico" || path.startsWith("/static/")) {
+      return file(request, env, path === "/" ? "/gate.html" : path);
     }
     return Response.redirect(new URL("/", request.url).toString(), 302);
   }
 
-  const kayttaja = await haeKayttaja(env, request);
+  const user = await getUser(env, request);
 
-  if (polku === "/") {
+  if (path === "/") {
     return Response.redirect(
-      new URL(kayttaja ? "/profiili" : "/kirjaudu", request.url).toString(),
+      new URL(user ? "/profile" : "/login", request.url).toString(),
       302
     );
   }
 
-  if (polku === "/kirjaudu") {
-    if (kayttaja) {
-      return Response.redirect(new URL("/profiili", request.url).toString(), 302);
+  if (path === "/login") {
+    if (user) {
+      return Response.redirect(new URL("/profile", request.url).toString(), 302);
     }
-    return tiedosto(request, env, "/kirjaudu.html");
+    return file(request, env, "/login.html");
   }
 
-  if (polku === "/profiili") {
-    if (!kayttaja) {
-      return Response.redirect(new URL("/kirjaudu", request.url).toString(), 302);
+  if (path === "/profile") {
+    if (!user) {
+      return Response.redirect(new URL("/login", request.url).toString(), 302);
     }
-    // Yllapitotunnuksella ei ole hahmoa, joten hahmolomake olisi sille
-    // tyhja sivu jolle ei voi tallentaa mitaan.
-    if (onSuojattu(kayttaja)) {
-      return Response.redirect(new URL("/yllapito", request.url).toString(), 302);
+    // The protected account has no character, so the character sheet
+    // would be an empty page it cannot save anything to.
+    if (isProtected(user)) {
+      return Response.redirect(new URL("/admin", request.url).toString(), 302);
     }
-    return tiedosto(request, env, "/profiili.html");
+    return file(request, env, "/profile.html");
   }
 
-  if (polku === "/yllapito") {
-    if (!kayttaja) {
-      return Response.redirect(new URL("/kirjaudu", request.url).toString(), 302);
+  if (OFFICER_PAGES[path]) {
+    if (!user) {
+      return Response.redirect(new URL("/login", request.url).toString(), 302);
     }
-    // Sivun saa auki vain officer. Rajapinta tarkistaa saman erikseen,
-    // joten sivun piilottaminen on mukavuutta eika suojaus.
-    if (kayttaja.role !== "officer") {
-      return Response.redirect(new URL("/profiili", request.url).toString(), 302);
+    if (user.role !== "officer") {
+      return Response.redirect(new URL("/profile", request.url).toString(), 302);
     }
-    return tiedosto(request, env, "/yllapito.html");
+    return file(request, env, OFFICER_PAGES[path]);
   }
 
-  // Officerin sivut. Rajapinnat tarkistavat saman erikseen, joten sivun
-  // piilottaminen on mukavuutta eika suojaus.
-  const OFFICERIN_SIVUT = {
-    "/historia": "/historia.html",
-    "/siirto": "/siirto.html",
-    "/loki": "/loki.html",
-  };
-
-  if (OFFICERIN_SIVUT[polku]) {
-    if (!kayttaja) {
-      return Response.redirect(new URL("/kirjaudu", request.url).toString(), 302);
-    }
-    if (kayttaja.role !== "officer") {
-      return Response.redirect(new URL("/profiili", request.url).toString(), 302);
-    }
-    return tiedosto(request, env, OFFICERIN_SIVUT[polku]);
-  }
-
-  return tiedosto(request, env, polku);
+  return file(request, env, path);
 }
 
-function tiedosto(request, env, polku) {
-  const osoite = new URL(polku, request.url);
-  return env.ASSETS.fetch(new Request(osoite, request));
+function file(request, env, path) {
+  const target = new URL(path, request.url);
+  return env.ASSETS.fetch(new Request(target, request));
 }
 
-/* ---------- rajapinta ---------- */
+/* ---------- API ---------- */
 
-async function rajapinta(request, env, polku) {
-  if (polku === "/api/health") return health(env);
+async function api(request, env, path) {
+  if (path === "/api/health") return health(env);
 
-  if (polku === "/api/portti" && request.method === "POST") {
-    return avaaPortti(request, env);
+  if (path === "/api/gate" && request.method === "POST") {
+    return openGate(request, env);
   }
 
-  // Tästä eteenpäin portin on oltava auki.
-  if (!(await onPorttiAuki(env, request))) {
+  // From here on the gate has to be open.
+  if (!(await isGateOpen(env, request))) {
     return json({ error: "Sivusto on suljettu." }, 403);
   }
 
-  if (polku === "/api/kirjaudu" && request.method === "POST") {
-    return kirjaudu(request, env);
+  if (path === "/api/login" && request.method === "POST") {
+    return login(request, env);
   }
-  if (polku === "/api/ulos" && request.method === "POST") {
-    return ulos(request, env);
+  if (path === "/api/logout" && request.method === "POST") {
+    return logout(request, env);
   }
-  if (polku === "/api/mina") {
-    return mina(request, env);
+  if (path === "/api/me") {
+    return me(request, env);
   }
 
-  // Tästä eteenpäin on oltava kirjautunut.
-  const kayttaja = await haeKayttaja(env, request);
-  if (!kayttaja) return json({ error: "Ei kirjautunut." }, 401);
+  // From here on you have to be logged in.
+  const user = await getUser(env, request);
+  if (!user) return json({ error: "Ei kirjautunut." }, 401);
 
-  // Jasenlista profiilisivun sivupalkkiin.
+  // The member list for the profile page's sidebar.
   //
-  // Kaikille kirjautuneille, koska koko listan tarkoitus on etta raideri
-  // nakee mita muut ovat valinneet. Vain se mita profiilisivu nayttaa -
-  // ei lukkoja, rooleja eika kirjautumisaikoja, jotka kuuluvat
-  // yllapitoon.
-  if (polku === "/api/roster") {
-    return json({ ok: true, ...(await haeRoster(env)) });
+  // For every logged-in user, because the whole point of the list is
+  // that a raider can see what others picked. Only what the profile page
+  // shows — no locks, ranks or login times, which belong to the admin
+  // pages.
+  if (path === "/api/roster") {
+    return json({ ok: true, ...(await getRoster(env)) });
   }
 
-  if (polku === "/api/nakyma") {
-    // Oma profiili ja toisen katselu ovat sama ruutu, joten ne ovat sama
-    // rajapintakin - kaksi erillista olisi kaksi paikkaa jotka voivat
-    // ajautua erilleen.
+  if (path === "/api/view") {
+    // Your own profile and viewing someone else's are the same screen, so
+    // they are the same endpoint — two separate ones would be two places
+    // that can drift apart.
     //
-    // Toisen profiilin saa katsoa kuka tahansa kirjautunut: valinnat ovat
-    // killan sisaista tietoa, ja niiden vertailu on koko sivuston
-    // tarkoitus. Muokata saa vain omaansa, ja sen ratkaisee tallennus -
-    // ei tama.
-    const katso = new URL(request.url).searchParams.get("username") ?? "";
-    let kohde = kayttaja;
+    // Anyone logged in may view another profile: the picks are internal
+    // guild information, and comparing them is the whole point of the
+    // site. Editing is limited to your own, and the save decides that —
+    // not this.
+    const wanted = new URL(request.url).searchParams.get("username") ?? "";
+    let target = user;
 
-    if (katso && katso.toLowerCase() !== kayttaja.username.toLowerCase()) {
-      kohde = await haeKayttajaNimella(env, katso);
-      if (!kohde) return json({ error: "Käyttäjää ei löydy." }, 404);
+    if (wanted && wanted.toLowerCase() !== user.username.toLowerCase()) {
+      target = await getUserByName(env, wanted);
+      if (!target) return json({ error: "Käyttäjää ei löydy." }, 404);
     }
 
-    const nakyma = await haeNakyma(env, kohde.id);
-    nakyma.user = kohde;
-    nakyma.omaProfiili = kohde.id === kayttaja.id;
+    const view = await getView(env, target.id);
+    view.user = target;
+    view.ownProfile = target.id === user.id;
 
-    // Itemien nimet haetaan samassa vastauksessa. Erillinen kutsu tarkoittaisi
-    // etta lista valahtaa ensin numeroina ja tayttyy vasta sen jalkeen.
-    const idt = [
-      ...nakyma.items.map((i) => i.item_id),
-      ...Object.values(nakyma.picks),
+    // The item names come in the same response. A separate call would
+    // mean the list flashes as numbers first and fills in afterwards.
+    const ids = [
+      ...view.items.map((i) => i.item_id),
+      ...Object.values(view.picks),
     ];
-    nakyma.tiedot = await haeItemTiedot(env, idt);
+    view.details = await getItemDetails(env, ids);
 
-    return json({ ok: true, ...nakyma });
+    return json({ ok: true, ...view });
   }
 
-  if (polku === "/api/valinta" && request.method === "PUT") {
-    const body = await lueJson(request);
+  if (path === "/api/pick" && request.method === "PUT") {
+    const body = await readJson(request);
     const slotKey = String(body.slot_key ?? "");
-    const raaka = body.item_id;
+    const raw = body.item_id;
     const itemId =
-      raaka === null || raaka === "" || raaka === undefined
-        ? null
-        : parseInt(raaka, 10);
+      raw === null || raw === "" || raw === undefined ? null : parseInt(raw, 10);
 
     if (itemId !== null && !Number.isFinite(itemId)) {
       return json({ error: "Virheellinen item." }, 400);
     }
 
-    const tulos = await tallennaValinta(env, kayttaja, slotKey, itemId);
-    return json(tulos, tulos.error ? tulos.status : 200);
+    const result = await savePick(env, user, slotKey, itemId);
+    return json(result, result.error ? result.status : 200);
   }
 
-  if (polku === "/api/lukitse" && request.method === "POST") {
-    return json(await lukitseOma(env, kayttaja));
+  if (path === "/api/lock-own" && request.method === "POST") {
+    return json(await lockOwn(env, user));
   }
 
-  /* ---------- officerin työkalut ---------- */
+  /* ---------- officer tools ---------- */
 
-  if (!onOfficer(kayttaja)) {
+  if (!isOfficer(user)) {
     return json({ error: "Vain officerille." }, 403);
   }
 
-  if (polku === "/api/kayttajat") {
-    // Oma tunnus mukaan: lista tarvitsee sen tietaakseen mitka napit ovat
-    // omalla rivilla. Nakyma ei ole suojaus - palvelin tarkistaa saman.
-    return json({ ok: true, me: kayttaja.username, ...(await haeKayttajat(env)) });
+  if (path === "/api/users") {
+    // Our own username too: the list needs it to know which buttons are
+    // on our own row. The view is not protection — the server checks the
+    // same thing.
+    return json({ ok: true, me: user.username, ...(await getUsers(env)) });
   }
 
-  if (polku === "/api/lukko" && request.method === "POST") {
-    const body = await lueJson(request);
-    const tulos = await asetaLukko(
+  if (path === "/api/lock" && request.method === "POST") {
+    const body = await readJson(request);
+    const result = await setLock(
       env,
-      kayttaja.username,
+      user.username,
       String(body.username ?? ""),
       !!body.locked,
-      body.syy
+      body.reason
     );
-    return json(tulos, tulos.error ? tulos.status : 200);
+    return json(result, result.error ? result.status : 200);
   }
 
-  /* ---------- toimintoloki ---------- */
+  if (path === "/api/role" && request.method === "POST") {
+    const body = await readJson(request);
+    const result = await setRole(
+      env,
+      user.username,
+      String(body.username ?? ""),
+      String(body.role ?? "")
+    );
+    return json(result, result.error ? result.status : 200);
+  }
 
-  if (polku === "/api/loki") {
-    const p = new URL(request.url).searchParams;
+  if (path === "/api/password" && request.method === "POST") {
+    const body = await readJson(request);
+    const result = await setPassword(
+      env,
+      user.username,
+      String(body.username ?? ""),
+      String(body.password ?? "")
+    );
+    return json(result, result.error ? result.status : 200);
+  }
+
+  if (path === "/api/user" && request.method === "POST") {
+    const result = await createUser(env, user.username, await readJson(request));
+    return json(result, result.error ? result.status : 200);
+  }
+
+  if (path === "/api/user-delete" && request.method === "POST") {
+    const body = await readJson(request);
+    const result = await deleteUser(
+      env,
+      user.username,
+      String(body.username ?? "")
+    );
+    return json(result, result.error ? result.status : 200);
+  }
+
+  if (path === "/api/character" && request.method === "POST") {
+    const body = await readJson(request);
+    const { username, ...changes } = body;
+    const result = await updateCharacter(
+      env,
+      user.username,
+      String(username ?? ""),
+      changes
+    );
+    return json(result, result.error ? result.status : 200);
+  }
+
+  /* ---------- action log ---------- */
+
+  if (path === "/api/log") {
+    const params = new URL(request.url).searchParams;
     return json({
       ok: true,
-      // Poisto on vain suojatulla tunnuksella. Selain tarvitsee tiedon
-      // nappien piirtamiseen; palvelin tarkistaa saman uudelleen.
-      saaPoistaa: onSuojattu(kayttaja),
-      ...(await haeLoki(env, {
-        raja: p.get("raja"),
-        toiminto: p.get("toiminto"),
-        kohde: p.get("kohde"),
+      // Deletion is only for the protected account. The browser needs to
+      // know in order to draw the buttons; the server checks it again.
+      mayDelete: isProtected(user),
+      ...(await getLog(env, {
+        limit: params.get("limit"),
+        action: params.get("action"),
+        name: params.get("name"),
       })),
     });
   }
 
-  if (polku === "/api/loki-poista" && request.method === "POST") {
-    // Loki jonka officer voi siivota ei ole loki vaan muistiinpano.
-    if (!onSuojattu(kayttaja)) {
-      return json(
-        { error: "Lokia voi poistaa vain ylläpitotunnuksella." },
-        403
-      );
+  if (path === "/api/log-delete" && request.method === "POST") {
+    // A log an officer can tidy is not a log but a note.
+    if (!isProtected(user)) {
+      return json({ error: "Lokia voi poistaa vain ylläpitotunnuksella." }, 403);
     }
 
-    const body = await lueJson(request);
+    const body = await readJson(request);
     const id = parseInt(body.id, 10);
     if (!Number.isFinite(id)) return json({ error: "Puuttuva id." }, 400);
 
-    const tulos = await poistaLokirivi(env, kayttaja.username, id);
-    return json(tulos, tulos.error ? tulos.status : 200);
+    const result = await deleteLogRow(env, user.username, id);
+    return json(result, result.error ? result.status : 200);
   }
 
-  if (polku === "/api/rooli" && request.method === "POST") {
-    const body = await lueJson(request);
-    const tulos = await vaihdaRooli(
-      env,
-      kayttaja.username,
-      String(body.username ?? ""),
-      String(body.role ?? "")
-    );
-    return json(tulos, tulos.error ? tulos.status : 200);
+  /* ---------- addon transfer ---------- */
+
+  if (path === "/api/export") {
+    const result = await buildExport(env);
+    return json(result, result.error ? result.status : 200);
   }
 
-  if (polku === "/api/salasana" && request.method === "POST") {
-    const body = await lueJson(request);
-    const tulos = await asetaSalasana(
-      env,
-      kayttaja.username,
-      String(body.username ?? ""),
-      String(body.password ?? "")
-    );
-    return json(tulos, tulos.error ? tulos.status : 200);
+  if (path === "/api/imports") {
+    return json({ ok: true, ...(await getImports(env)) });
   }
 
-  if (polku === "/api/kayttaja" && request.method === "POST") {
-    const tulos = await luoKayttaja(env, kayttaja.username, await lueJson(request));
-    return json(tulos, tulos.error ? tulos.status : 200);
-  }
+  if (path === "/api/import") {
+    if (request.method === "POST") {
+      const body = await readJson(request);
+      const result = await importHistory(
+        env,
+        user.username,
+        String(body.text ?? ""),
+        body.label
+      );
+      return json(result, result.error ? result.status : 200);
+    }
 
-  if (polku === "/api/poista" && request.method === "POST") {
-    const body = await lueJson(request);
-    const tulos = await poistaKayttaja(
-      env,
-      kayttaja.username,
-      String(body.username ?? "")
-    );
-    return json(tulos, tulos.error ? tulos.status : 200);
-  }
-
-  if (polku === "/api/hahmo" && request.method === "POST") {
-    const body = await lueJson(request);
-    const { username, ...muutokset } = body;
-    const tulos = await paivitaHahmo(
-      env,
-      kayttaja.username,
-      String(username ?? ""),
-      muutokset
-    );
-    return json(tulos, tulos.error ? tulos.status : 200);
-  }
-
-  if (polku === "/api/historia" && request.method === "POST") {
-    const body = await lueJson(request);
-    const tulos = await tuoHistoria(
-      env,
-      kayttaja.username,
-      String(body.teksti ?? ""),
-      body.label
-    );
-    return json(tulos, tulos.error ? tulos.status : 200);
-  }
-
-  /* ---------- tuontilokit ---------- */
-
-  if (polku === "/api/tuonnit") {
-    return json({ ok: true, ...(await haeTuonnit(env)) });
-  }
-
-  if (polku === "/api/tuonti") {
     const id = parseInt(new URL(request.url).searchParams.get("id") ?? "", 10);
     if (!Number.isFinite(id)) return json({ error: "Puuttuva id." }, 400);
 
-    const tulos = await haeTuonti(env, id);
-    return json(tulos, tulos.error ? tulos.status : 200);
+    const result = await getImport(env, id);
+    return json(result, result.error ? result.status : 200);
   }
 
-  if (polku === "/api/tuonti-poista" && request.method === "POST") {
-    const body = await lueJson(request);
+  if (path === "/api/import-delete" && request.method === "POST") {
+    const body = await readJson(request);
     const id = parseInt(body.id, 10);
     if (!Number.isFinite(id)) return json({ error: "Puuttuva id." }, 400);
 
-    const tulos = await poistaTuonti(env, kayttaja.username, id);
-    return json(tulos, tulos.error ? tulos.status : 200);
-  }
-
-  if (polku === "/api/vienti") {
-    const tulos = await teeVienti(env);
-    return json(tulos, tulos.error ? tulos.status : 200);
+    const result = await deleteImport(env, user.username, id);
+    return json(result, result.error ? result.status : 200);
   }
 
   return json({ error: "Tuntematon polku." }, 404);
@@ -378,9 +364,7 @@ async function rajapinta(request, env, polku) {
 
 async function health(env) {
   try {
-    const row = await env.DB.prepare(
-      "SELECT value FROM settings WHERE key = ?"
-    )
+    const row = await env.DB.prepare("SELECT value FROM settings WHERE key = ?")
       .bind("schema_version")
       .first();
     return json({ ok: true, db: "yhteys ok", schema_version: row?.value ?? null });
@@ -389,117 +373,118 @@ async function health(env) {
   }
 }
 
-/* ---------- yhteinen portti ---------- */
+/* ---------- the shared gate ---------- */
 
 /**
- * Portin eväste sisältää satunnaisen tunnuksen, joka on myös kannassa.
+ * The gate cookie holds a random token that is also in the database.
  *
- * Pelkkä "olen käynyt portilla" -merkintä olisi kenen tahansa kirjoitettavissa
- * selaimen työkaluilla. Kun arvo tarkistetaan kantaa vasten, sitä ei voi
- * keksiä - ja yhteisen salasanan vaihtaminen sulkee kaikki vanhat evästeet
- * kerralla, koska tunnus vaihtuu samalla.
+ * A plain "I have been through the gate" marker would be writable by
+ * anyone with browser tools. Checking the value against the database
+ * means it cannot be invented — and changing the shared password closes
+ * every old cookie at once, because the token changes with it.
  */
-async function onPorttiAuki(env, request) {
-  const evasteet = lueEvasteet(request);
-  const annettu = evasteet[EVASTE_PORTTI];
-  if (!annettu) return false;
+async function isGateOpen(env, request) {
+  const given = readCookies(request)[COOKIE_GATE];
+  if (!given) return false;
 
-  const rivi = await env.DB.prepare(
+  const row = await env.DB.prepare(
     "SELECT value FROM settings WHERE key = 'gate_token'"
   ).first();
 
-  return !!rivi && rivi.value === annettu;
+  return !!row && row.value === given;
 }
 
-async function avaaPortti(request, env) {
-  const body = await lueJson(request);
-  const tunnus = String(body.username ?? "").trim();
-  const salasana = String(body.password ?? "");
+async function openGate(request, env) {
+  const body = await readJson(request);
+  const username = String(body.username ?? "").trim();
+  const password = String(body.password ?? "");
 
-  const rivit = await env.DB.prepare(
+  const rows = await env.DB.prepare(
     "SELECT key, value FROM settings WHERE key IN ('gate_username','gate_password','gate_token')"
   ).all();
 
-  const asetus = {};
-  for (const r of rivit.results ?? []) asetus[r.key] = r.value;
+  const settings = {};
+  for (const row of rows.results ?? []) settings[row.key] = row.value;
 
-  const tunnusOk = (asetus.gate_username ?? "").toLowerCase() === tunnus.toLowerCase();
-  const salaOk = await verifyPassword(salasana, asetus.gate_password ?? "");
+  const nameOk =
+    (settings.gate_username ?? "").toLowerCase() === username.toLowerCase();
+  const passwordOk = await verifyPassword(password, settings.gate_password ?? "");
 
-  // Sama vastaus kummassakin tapauksessa: väärä tunnus ja väärä salasana
-  // eivät saa erottua toisistaan.
-  if (!tunnusOk || !salaOk) {
+  // The same answer either way: a wrong username and a wrong password
+  // must not be distinguishable.
+  if (!nameOk || !passwordOk) {
     return json({ error: "Väärä tunnus tai salasana." }, 401);
   }
 
-  return json(
-    { ok: true },
-    200,
-    { "set-cookie": evaste(EVASTE_PORTTI, asetus.gate_token, ISTUNTO_KESTO_S) }
-  );
+  return json({ ok: true }, 200, {
+    "set-cookie": cookie(COOKIE_GATE, settings.gate_token, SESSION_MAX_AGE),
+  });
 }
 
-/* ---------- henkilökohtainen kirjautuminen ---------- */
+/* ---------- personal login ---------- */
 
-async function kirjaudu(request, env) {
-  const body = await lueJson(request);
-  const tunnus = String(body.username ?? "").trim();
-  const salasana = String(body.password ?? "");
+async function login(request, env) {
+  const body = await readJson(request);
+  const username = String(body.username ?? "").trim();
+  const password = String(body.password ?? "");
 
-  if (!tunnus || !salasana) {
+  if (!username || !password) {
     return json({ error: "Anna tunnus ja salasana." }, 400);
   }
 
-  const kayttaja = await env.DB.prepare(
+  const user = await env.DB.prepare(
     "SELECT id, username, password_hash FROM users WHERE username = ?"
   )
-    .bind(tunnus)
+    .bind(username)
     .first();
 
-  // Tuntematon tunnus tarkistetaan silti salasanaa vasten, jotta vastaus
-  // kestää yhtä kauan kummassakin tapauksessa eikä kerro onko tunnus olemassa.
-  const tiiviste = kayttaja?.password_hash ?? "pbkdf2$25000$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
-  const ok = await verifyPassword(salasana, tiiviste);
+  // An unknown username is still checked against a password, so the
+  // response takes the same time either way and does not reveal whether
+  // the account exists.
+  const hash =
+    user?.password_hash ??
+    "pbkdf2$25000$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+  const ok = await verifyPassword(password, hash);
 
-  if (!kayttaja || !ok) {
+  if (!user || !ok) {
     return json({ error: "Väärä tunnus tai salasana." }, 401);
   }
 
-  const token = uusiTunnus();
+  const token = newToken();
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO sessions (token, user_id, expires_at)
        VALUES (?, ?, datetime('now', '+30 days'))`
-    ).bind(token, kayttaja.id),
+    ).bind(token, user.id),
     env.DB.prepare(
       "UPDATE users SET last_login_at = datetime('now') WHERE id = ?"
-    ).bind(kayttaja.id),
+    ).bind(user.id),
   ]);
 
-  return json(
-    { ok: true },
-    200,
-    { "set-cookie": evaste(EVASTE_ISTUNTO, token, ISTUNTO_KESTO_S) }
-  );
+  return json({ ok: true }, 200, {
+    "set-cookie": cookie(COOKIE_SESSION, token, SESSION_MAX_AGE),
+  });
 }
 
-async function ulos(request, env) {
-  const token = lueEvasteet(request)[EVASTE_ISTUNTO];
+async function logout(request, env) {
+  const token = readCookies(request)[COOKIE_SESSION];
   if (token) {
-    await env.DB.prepare("DELETE FROM sessions WHERE token = ?").bind(token).run();
+    await env.DB.prepare("DELETE FROM sessions WHERE token = ?")
+      .bind(token)
+      .run();
   }
-  return json({ ok: true }, 200, { "set-cookie": poistaEvaste(EVASTE_ISTUNTO) });
+  return json({ ok: true }, 200, { "set-cookie": clearCookie(COOKIE_SESSION) });
 }
 
-async function mina(request, env) {
-  const kayttaja = await haeKayttaja(env, request);
-  if (!kayttaja) return json({ error: "Ei kirjautunut." }, 401);
-  return json({ ok: true, user: kayttaja });
+async function me(request, env) {
+  const user = await getUser(env, request);
+  if (!user) return json({ error: "Ei kirjautunut." }, 401);
+  return json({ ok: true, user });
 }
 
-/* ---------- apurit ---------- */
+/* ---------- helpers ---------- */
 
-async function lueJson(request) {
+async function readJson(request) {
   try {
     const data = await request.json();
     return data && typeof data === "object" ? data : {};
@@ -518,7 +503,3 @@ function json(data, status = 200, extraHeaders = {}) {
     },
   });
 }
-
-// hashPassword on käytössä vasta kun officerin työkalut lisätään; pidetään
-// tuonti näkyvissä, jotta salasanan asetus kulkee samasta paikasta.
-export { hashPassword };

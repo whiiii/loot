@@ -1,0 +1,281 @@
+/* The officer pages: member table, forms and the action log. */
+
+.admin {
+  max-width: 1080px;
+  margin: 1.5rem auto 3rem;
+  padding: 0 1rem;
+}
+
+/* A table wrapper.
+   Without this a wide table pushes the whole page to the right: the
+   container is centred, but the table does not fit inside it and spills
+   over. Inside the wrapper it scrolls in its own box and the page stays
+   put. */
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.admin section { margin-bottom: 2.25rem; }
+
+.admin h2 {
+  font-family: var(--font-heading);
+  margin: 0 0 .75rem;
+  font-size: 1.05rem;
+  font-weight: 400;
+  letter-spacing: .05em;
+  color: var(--gold);
+}
+
+.small-text { font-size: .84rem; margin: 0 0 .75rem; }
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .86rem;
+}
+
+.table th {
+  text-align: left;
+  padding: .45rem .6rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--dim);
+  font-size: .76rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: .5rem .6rem;
+  border-bottom: 1px solid rgba(255,255,255,.04);
+  white-space: nowrap;
+}
+
+.table .right { text-align: right; }
+
+/* The Received column.
+   Three states, because the number alone does not separate an empty
+   profile from one not started: muted = no picks, gold = in progress,
+   green = everything received. */
+.table td.muted { color: var(--muted); }
+.table td.partial { color: var(--gold); }
+.table td.complete { color: var(--ok); }
+
+.table .actions {
+  display: flex;
+  gap: .4rem;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+/* A button with an icon.
+   A fixed width keeps the rows straight: without it "Avaa" and "Lukitse"
+   would shift every other button whenever a lock changed state. */
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .35rem;
+  min-width: 104px;
+  text-decoration: none;
+  line-height: 1.3;
+}
+.icon-button svg { flex: 0 0 13px; opacity: .85; }
+.icon-button:hover svg { opacity: 1; }
+
+.badge {
+  display: inline-block;
+  padding: .1rem .5rem;
+  border-radius: 9px;
+  font-size: .74rem;
+  font-weight: 650;
+  border: 1px solid;
+}
+.badge.open   { color: var(--ok); border-color: var(--ok-border); background: var(--ok-bg); }
+.badge.locked { color: var(--warn); border-color: var(--warn-border); background: var(--warn-bg); }
+.badge.role   { color: var(--dim); border-color: var(--border); background: transparent; }
+
+/* The protected admin account.
+   Above the table on its own line: it is not a profile, so every column
+   in the list would be empty. */
+.badge.admin {
+  color: var(--gold);
+  border-color: var(--gold-dark);
+  background: transparent;
+  letter-spacing: .04em;
+}
+
+#admin-note { color: var(--dim); }
+#admin-buttons { margin-bottom: 1rem; }
+#admin-note[hidden],
+#admin-buttons[hidden] { display: none; }
+
+.select {
+  padding: .25rem .4rem;
+  background: var(--sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+  font-size: .82rem;
+  cursor: pointer;
+}
+.select:focus { outline: none; border-color: var(--gold); }
+
+/* Three shades of button.
+   One look for all of them would mean an irreversible action looks as
+   harmless as an everyday one — and then it eventually gets clicked. */
+
+.button-primary,
+.button-quiet,
+.button-accent,
+.button-danger {
+  width: auto;
+  padding: .35rem .75rem;
+  border-radius: var(--radius);
+  font: inherit;
+  font-size: .8rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+/* Primary: filled, the page's main action. */
+.button-primary {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: var(--gold-text);
+}
+.button-primary:hover { filter: brightness(1.08); }
+
+/* Quiet: an everyday action that should not shout. */
+.button-quiet {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--dim);
+}
+.button-quiet:hover { background: var(--hover); color: var(--text); }
+
+/* Accent: an action waiting to be done, such as an unopened lock. */
+.button-accent {
+  background: var(--warn-bg);
+  border-color: var(--warn-border);
+  color: var(--warn);
+}
+.button-accent:hover { background: var(--hover); }
+
+/* Danger: irreversible. */
+.button-danger {
+  background: transparent;
+  border-color: var(--error-border);
+  color: var(--error);
+}
+.button-danger:hover {
+  background: var(--error-bg);
+  border-color: var(--error-border);
+  color: var(--error);
+}
+
+/* The character name is a link to the profile.
+   Underlined only on hover: the row already has colours and dropdowns,
+   and a permanent underline would add nothing the colour does not. */
+.character-link {
+  font-weight: 600;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+.character-link:hover { border-bottom-color: currentColor; }
+
+/* Sortable headers. */
+.table th[data-sort] {
+  cursor: pointer;
+  user-select: none;
+}
+.table th[data-sort]:hover { color: var(--text); }
+.table th.sorted { color: var(--gold); }
+
+.table th[data-sort]::after {
+  content: "";
+  display: inline-block;
+  margin-left: .3rem;
+  opacity: .5;
+}
+.table th[data-direction="up"]::after { content: "▲"; opacity: 1; }
+.table th[data-direction="down"]::after { content: "▼"; opacity: 1; }
+
+/* Forms. */
+.form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .75rem 1rem;
+  align-items: flex-end;
+}
+
+.field { display: flex; flex-direction: column; min-width: 170px; flex: 1 1 170px; }
+.field.narrow { flex: 0 0 130px; min-width: 130px; }
+.field.field-buttons { flex: 0 0 auto; min-width: 0; }
+
+.field label {
+  margin-bottom: .3rem;
+  font-size: .74rem;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.field input {
+  width: 100%;
+  margin: 0;
+  padding: .45rem .6rem;
+  background: var(--sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+  font-size: .86rem;
+}
+.field input:focus { outline: none; border-color: var(--gold); }
+.field .select { padding: .45rem .6rem; font-size: .86rem; }
+
+.buttons { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+
+/* The log label given at import time.
+   Its own width, because an input is width:100% elsewhere and would push
+   the button onto its own line. */
+.import-label {
+  width: auto;
+  flex: 1 1 260px;
+  max-width: 420px;
+  margin: 0;
+  padding: .5rem .6rem;
+  font-size: .86rem;
+}
+
+/* Row actions. Its own width, so the column does not narrow to the
+   selected text and make the rows jump. */
+.action-select { min-width: 148px; }
+
+/* The log's details column. A reason can be a long sentence, and that
+   must not stretch the whole table. */
+.table td.wrap {
+  white-space: normal;
+  min-width: 220px;
+  max-width: 360px;
+}
+
+textarea {
+  width: 100%;
+  margin-top: .75rem;
+  padding: .7rem;
+  background: var(--sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: .8rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+textarea[hidden] { display: none; }

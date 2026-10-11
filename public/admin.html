@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Ylläpito — Loot</title>
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/static/favicon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Marcellus&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono&display=swap">
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/profile.css">
+<link rel="stylesheet" href="/static/admin.css">
+<link rel="stylesheet" href="/static/dialog.css">
+</head>
+<body class="page">
+
+<header class="topbar">
+  <div class="topbar-left">
+    <strong>Ylläpito</strong>
+    <span class="dim" id="raid"></span>
+  </div>
+  <nav class="topbar-right nav">
+    <a class="small linkbutton" data-officer href="/admin">Ylläpito</a>
+    <a class="small linkbutton" data-officer href="/transfer">Siirto</a>
+    <a class="small linkbutton" data-officer href="/imports">Tuontihistoria</a>
+    <a class="small linkbutton" data-officer href="/log">Loki</a>
+    <a class="small linkbutton" href="/profile">Oma profiili</a>
+    <button class="small" id="logout">Kirjaudu ulos</button>
+  </nav>
+</header>
+
+<main class="admin">
+
+  <section>
+    <h2>Profiilit</h2>
+
+    <!-- The admin account is not a profile, so it is not in the list but
+         on its own line above it. An ordinary paragraph rather than a
+         layout of my own: the page's own classes work, mine did not. -->
+    <p id="admin-note" class="small-text" hidden></p>
+    <div id="admin-buttons" class="buttons" hidden></div>
+
+    <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th data-sort="username">Tunnus</th>
+          <th data-sort="character">Hahmo</th>
+          <th data-sort="class">Luokka</th>
+          <th data-sort="raid_role">Rooli</th>
+          <th data-sort="role">Rank</th>
+          <th data-sort="picks" class="right">Valinnat</th>
+          <th data-sort="received" class="right">Saatu</th>
+          <th data-sort="locked">Tila</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="users">
+        <tr><td colspan="9" class="dim">Ladataan…</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Uusi jäsen</h2>
+    <form class="form" id="new-member" autocomplete="off">
+      <div class="field">
+        <label for="new-username">Tunnus</label>
+        <input type="text" id="new-username" required maxlength="20"
+               placeholder="kirjautumistunnus">
+      </div>
+      <div class="field">
+        <label for="new-first">Etunimi</label>
+        <input type="text" id="new-first" maxlength="40">
+      </div>
+      <div class="field">
+        <label for="new-last">Sukunimi</label>
+        <input type="text" id="new-last" maxlength="40">
+      </div>
+      <div class="field narrow">
+        <label for="new-class">Luokka</label>
+        <select id="new-class" class="select"></select>
+      </div>
+      <div class="field narrow">
+        <label for="new-raidrole">Rooli</label>
+        <select id="new-raidrole" class="select"></select>
+      </div>
+      <div class="field narrow">
+        <label for="new-rank">Rank</label>
+        <select id="new-rank" class="select">
+          <option value="social">Social</option>
+          <option value="raider" selected>Raider</option>
+          <option value="officer">Officer</option>
+        </select>
+      </div>
+      <div class="field narrow">
+        <label for="new-password">Salasana</label>
+        <input type="text" id="new-password" required minlength="6"
+               placeholder="väh. 6 merkkiä">
+      </div>
+      <div class="field field-buttons">
+        <button type="submit" class="button-primary">Luo jäsen</button>
+      </div>
+    </form>
+  </section>
+
+  <section>
+    <p class="small-text dim">
+      Vienti addoniin ja tuonti addonista ovat omalla
+      <a href="/transfer">Siirto</a>-sivullaan.
+    </p>
+  </section>
+
+</main>
+
+<div class="message" id="message"></div>
+
+<script src="/static/gamedata.js"></script>
+<script src="/static/nav.js"></script>
+<script src="/static/dialog.js"></script>
+<script src="/static/admin.js"></script>
+</body>
+</html>

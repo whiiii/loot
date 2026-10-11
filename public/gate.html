@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Loot</title>
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/static/favicon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Marcellus&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono&display=swap">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="centred">
+  <form class="card" id="form" autocomplete="off">
+    <h1>Loot</h1>
+    <p class="lead">Sivusto on killan käytössä. Anna yhteinen tunnus.</p>
+
+    <label for="username">Tunnus</label>
+    <input type="text" id="username" name="username" required autofocus>
+
+    <label for="password">Salasana</label>
+    <input type="password" id="password" name="password" required>
+
+    <button type="submit" id="submit">Jatka</button>
+    <div class="message" id="message"></div>
+  </form>
+</div>
+
+<script>
+const form = document.getElementById("form");
+const submit = document.getElementById("submit");
+const message = document.getElementById("message");
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  submit.disabled = true;
+  message.textContent = "";
+  message.className = "message";
+
+  try {
+    const response = await fetch("/api/gate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        username: document.getElementById("username").value,
+        password: document.getElementById("password").value
+      })
+    });
+    const data = await response.json();
+
+    if (data.ok) {
+      location.href = "/";
+      return;
+    }
+    message.textContent = data.error || "Kirjautuminen ei onnistunut.";
+  } catch (err) {
+    message.textContent = "Yhteysvirhe. Yritä uudelleen.";
+  }
+  submit.disabled = false;
+});
+</script>
+</body>
+</html>

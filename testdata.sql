@@ -1,16 +1,16 @@
--- Testidataa hahmoikkunan kehittamiseen.
+-- Test data for developing the character window.
 --
--- Jokainen item-id on tarkistettu Wowheadilta: nimi ja slotti vastaavat
--- sita mika tahan on kirjattu. Boss-sarake on jatetty tyhjaksi, koska sita
--- ei ole tarkistettu - tyhja kentta on parempi kuin vaara tieto.
+-- Every item id has been checked against Wowhead: the name and the slot
+-- match what is written here. The boss column is left empty because it has
+-- not been checked — an empty field is better than a wrong one.
 --
--- Raidin nimi on 'Testidata' eika minkaan oikean raidin nimi: mukana on
--- itemeita useasta Classic-raidista, jotta jokaiseen paikkaan on jotain
--- valittavaa. Oikeat raidit tuodaan officerin tuontityokalulla.
+-- The raid is called 'Testidata' rather than any real raid's name: it
+-- holds items from several Classic raids, so that every position has
+-- something to pick. Real raids come in through the officer's import tool.
 --
--- Rivit kirjoitetaan tavallisena VALUES-listana. Aiempi versio kokosi ne
--- UNION ALL -ketjuksi, ja D1 torjui sen: yhdistetyssa SELECTissa saa olla
--- vain rajallinen maara osia.
+-- The rows are written as an ordinary VALUES list. An earlier version
+-- built them as a UNION ALL chain and D1 refused it: a compound SELECT may
+-- only have a limited number of parts.
 
 DELETE FROM picks;
 DELETE FROM items;
