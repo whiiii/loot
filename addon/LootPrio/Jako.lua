@@ -58,6 +58,19 @@ function NS.NaytaKaikkiVastaukset()
   return NS.OnOfficer()
 end
 
+--- Onko nimetty pelaaja taman jaon lootmaster.
+---
+--- Tata vasten tarkistetaan jokainen jakoon vaikuttava teko: arvonta,
+--- antaminen, peruminen ja lopetus. Officer-oikeus riittaa jaon
+--- avaamiseen, mutta ei enaa sen jalkeen - muuten toinen apulainen voisi
+--- antaa itemin kesken toisen jakoa, ja nappien piilottaminen hanelta
+--- olisi vain nakyma eika saanto.
+function NS.OnJakaja(nimi)
+  local s = NS.sessio
+  if not s then return false end
+  return s.lootmaster == (nimi or NS.OmaNimi())
+end
+
 --- Onko jako kaynnissa ja jollakin toisella.
 ---
 --- Lootmaster on se joka avasi jaon. Mitaan erillista asetusta ei ole,
@@ -218,7 +231,7 @@ end
 function NS.SuljeVastaukset()
   local s = NS.sessio
   if not s or s.suljettu then return false end
-  if not s.testi and not NS.OnOfficer() then return false end
+  if not s.testi and not NS.OnJakaja() then return false end
 
   s.suljettu = true
   if not s.testi then NS.Comm.Laheta("SULJE", s.id) end
@@ -297,6 +310,14 @@ end
 
 function NS.PaataSessio(yhteenveto)
   if not NS.sessio then return end
+
+  -- Lopettaa se joka jakaa. Muuten toinen apulainen voisi sulkea jaon
+  -- kesken, ja vastaamatta jaaneet itemit katoaisivat valilehdista.
+  if not NS.sessio.testi and not NS.OnJakaja() then
+    NS.Tulosta(("vain jaon avaaja voi paattaa jaon. Jakaa: %s"):format(
+      NS.sessio.lootmaster or "?"))
+    return
+  end
 
   if yhteenveto then NS.LahetaYhteenveto() end
 
@@ -525,8 +546,8 @@ function NS.PeruJako(indeksi, lahettaja)
 
   -- Paikallinen peruminen vaatii officer-oikeudet; verkosta tuleva on jo
   -- tarkistettu lahettajan arvosta.
-  if not lahettaja and not item.testi and not NS.OnOfficer() then
-    NS.Tulosta("vain officer voi perua jaon.")
+  if not lahettaja and not item.testi and not NS.OnJakaja() then
+    NS.Tulosta("vain jaon avaaja voi perua jaon.")
     return false
   end
 

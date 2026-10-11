@@ -60,7 +60,7 @@ function NS.Comm.Kasittele(tyyppi, sisalto, lahettaja)
 
   elseif tyyppi == "ARPA" then
     -- Arvonnan tekee jaon avaaja, jotta kaikilla on sama numero.
-    if not NS.OnOfficer(lahettaja) then return end
+    if not NS.OnJakaja(lahettaja) then return end
 
     local sessioId, indeksi, pelaaja, luku =
       sisalto:match("^(%S+)%s+(%d+)%s+(%S+)%s+(%d+)$")
@@ -69,7 +69,9 @@ function NS.Comm.Kasittele(tyyppi, sisalto, lahettaja)
     NS.KirjaaArpa(sessioId, tonumber(indeksi), pelaaja, tonumber(luku))
 
   elseif tyyppi == "JAETTU" then
-    if not NS.OnOfficer(lahettaja) then return end
+    -- Vain taman jaon lootmaster. Officer-oikeus riittaa jaon avaamiseen,
+    -- ei toisen jaon itemien antamiseen.
+    if not NS.OnJakaja(lahettaja) then return end
 
     local sessioId, indeksi, saaja, koodi, luku =
       sisalto:match("^(%S+)%s+(%d+)%s+(%S+)%s+(%S+)%s+(%d+)$")
@@ -78,11 +80,11 @@ function NS.Comm.Kasittele(tyyppi, sisalto, lahettaja)
     NS.KirjaaJako(sessioId, tonumber(indeksi), saaja, koodi, tonumber(luku))
 
   elseif tyyppi == "SULJE" then
-    if not NS.OnOfficer(lahettaja) then return end
+    if not NS.OnJakaja(lahettaja) then return end
     NS.VastauksetSuljettu(sisalto:match("^(%S+)"))
 
   elseif tyyppi == "PERU" then
-    if not NS.OnOfficer(lahettaja) then return end
+    if not NS.OnJakaja(lahettaja) then return end
 
     local sessioId, indeksi = sisalto:match("^(%S+)%s+(%d+)$")
     if not sessioId then return end
@@ -97,7 +99,9 @@ function NS.Comm.Kasittele(tyyppi, sisalto, lahettaja)
     NS.JakoSiirtyi(sisalto:match("^(%S+)"), lahettaja)
 
   elseif tyyppi == "LOPPU" then
-    if not NS.OnOfficer(lahettaja) then return end
+    -- Lopettaa se joka jakaa. Jos lootmaster on kadonnut, johtaja ottaa
+    -- jaon ensin haltuunsa ja lopettaa sitten.
+    if not NS.OnJakaja(lahettaja) then return end
     NS.SessioPaattyi(sisalto:match("^(%S+)"))
 
   elseif tyyppi == "KYSY" then

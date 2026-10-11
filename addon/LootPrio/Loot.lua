@@ -112,8 +112,9 @@ function NS.Jaa(item, nimi)
   local koodi = vastaus and vastaus.koodi
   local luku = vastaus and vastaus.luku
 
-  if not item.testi and not NS.OnOfficer() then
-    NS.Tulosta("vain officer voi jakaa lootin.")
+  if not item.testi and not NS.OnJakaja() then
+    NS.Tulosta(("vain jaon avaaja voi antaa itemin. Jakaa: %s"):format(
+      NS.sessio.lootmaster or "?"))
     return false
   end
 
