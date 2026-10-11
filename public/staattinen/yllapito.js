@@ -145,78 +145,40 @@ function piirra(users) {
   for (const u of users) {
     const tr = document.createElement("tr");
 
-    // Ylläpitotunnus ei ole hahmo vaan varauloskäynti. Siihen ei kohdistu
-    // yhtäkään toimea, joten riviltä jätetään pois kaikki mikä näyttäisi
-    // siltä että sille voisi tehdä jotain. Palvelin kieltää nämä joka
-    // tapauksessa — tämä on sitä varten ettei kukaan edes yritä.
-    const admin = !!u.protected;
-    if (admin) tr.className = "yllapitorivi";
+    // Ylläpitotunnus ei ole hahmo vaan varauloskäynti, joten sille ei ole
+    // mitään sanottavaa yhdessäkään sarakkeessa. Rivi vedetään yhdeksi
+    // soluksi: seitsemän peräkkäistä viivaa näyttäisi rikkinäiseltä, ja
+    // yksi lause kertoo saman.
+    if (u.protected) {
+      tbody.appendChild(yllapitoRivi(u));
+      continue;
+    }
 
     tr.appendChild(solu(u.username));
 
+    // Hahmon nimi luokan varissa, kuten pelissa - ja samalla linkki
+    // profiiliin. Nimi on se mita officer etsii listasta, joten se on myos
+    // luontevin paikka avata profiili.
     const hahmo = document.createElement("td");
-
-    if (admin) {
-      hahmo.appendChild(merkki("Ylläpito", "yllapito"));
-    } else {
-      // Hahmon nimi luokan varissa, kuten pelissa - ja samalla linkki
-      // profiiliin. Nimi on se mita officer etsii listasta, joten se on
-      // myos luontevin paikka avata profiili.
-      const linkki = document.createElement("a");
-      linkki.className = "hahmolinkki";
-      linkki.href = "/profiili?katso=" + encodeURIComponent(u.username);
-      linkki.textContent = hahmonNimi(u);
-      linkki.style.color = luokanVari(u.class);
-      linkki.title = "Avaa profiili";
-      hahmo.appendChild(linkki);
-    }
-
+    const linkki = document.createElement("a");
+    linkki.className = "hahmolinkki";
+    linkki.href = "/profiili?katso=" + encodeURIComponent(u.username);
+    linkki.textContent = hahmonNimi(u);
+    linkki.style.color = luokanVari(u.class);
+    linkki.title = "Avaa profiili";
+    hahmo.appendChild(linkki);
     tr.appendChild(hahmo);
 
-    if (admin) {
-      tr.appendChild(tyhjaSolu("Ei luokkaa — ei hahmo"));
-      tr.appendChild(tyhjaSolu("Ei raidiroolia — ei hahmo"));
-      tr.appendChild(tyhjaSolu("Roolia ei voi vaihtaa"));
-    } else {
-      tr.appendChild(kenttaSolu(u, "class", LUOKKAPARIT, "— luokka —"));
+    tr.appendChild(kenttaSolu(u, "class", LUOKKAPARIT, "— luokka —"));
 
-      // Roolivalitsin tarjoaa vain ne roolit joihin luokka kelpaa.
-      tr.appendChild(
-        kenttaSolu(u, "raid_role", roolitLuokalle(u.class), "— rooli —")
-      );
+    // Roolivalitsin tarjoaa vain ne roolit joihin luokka kelpaa.
+    tr.appendChild(
+      kenttaSolu(u, "raid_role", roolitLuokalle(u.class), "— rooli —")
+    );
 
-      const rooli = document.createElement("td");
-      rooli.appendChild(roolivalitsin(u));
-      tr.appendChild(rooli);
-    }
-
-    if (admin) {
-      tr.appendChild(tyhjaSolu("Ei valintoja — ei hahmo"));
-      tr.appendChild(tyhjaSolu("Ei valintoja — ei hahmo"));
-      tr.appendChild(tyhjaSolu("Ei lukittavissa"));
-
-      const vainSalasana = document.createElement("td");
-      vainSalasana.className = "toiminnot";
-
-      // Salasanan saa vaihtaa vain tunnus itse. Nappi nakyy siis vain
-      // omalla rivilla - muuten se lupaisi jotain mita se ei tee.
-      if (minaOlen && minaOlen.toLowerCase() === u.username.toLowerCase()) {
-        vainSalasana.appendChild(
-          teeNappi({
-            teksti: "Salasana",
-            kuvake: KUVAKE.avain,
-            luokka: "nappi-hillitty",
-            toiminto: () => vaihdaSalasana(u.username),
-          })
-        );
-      } else {
-        vainSalasana.appendChild(tyhja("Suojattu"));
-      }
-
-      tr.appendChild(vainSalasana);
-      tbody.appendChild(tr);
-      continue;
-    }
+    const rooli = document.createElement("td");
+    rooli.appendChild(roolivalitsin(u));
+    tr.appendChild(rooli);
 
     const valinnat = solu(`${u.valintoja} / ${paikkoja}`);
     valinnat.className = "oikealle";
@@ -393,19 +355,47 @@ function solu(teksti) {
   return td;
 }
 
-/** Vaimea viiva. Title kertoo miksi kohta on tyhja. */
-function tyhja(teksti) {
-  const span = document.createElement("span");
-  span.className = "himmea";
-  span.textContent = "—";
-  span.title = teksti;
-  return span;
-}
+/**
+ * Suojatun yllapitotunnuksen rivi.
+ *
+ * Yksi solu koko leveydelta: tunnus, merkki ja lause siita miksi muut
+ * sarakkeet ovat tyhjia. Oikeassa reunassa salasananappi, mutta vain
+ * omalla rivilla - muuten se lupaisi toimen jota palvelin ei salli.
+ */
+function yllapitoRivi(u) {
+  const tr = document.createElement("tr");
+  tr.className = "yllapitorivi";
 
-function tyhjaSolu(teksti) {
+  tr.appendChild(solu(u.username));
+
   const td = document.createElement("td");
-  td.appendChild(tyhja(teksti));
-  return td;
+  td.colSpan = 7;
+  td.className = "yllapitosolu";
+  td.appendChild(merkki("Ylläpito", "yllapito"));
+
+  const selite = document.createElement("span");
+  selite.className = "himmea";
+  selite.textContent =
+    "Sivuston varauloskäynti — ei hahmo, ei muokattavissa.";
+  td.appendChild(selite);
+  tr.appendChild(td);
+
+  const toiminto = document.createElement("td");
+
+  if (minaOlen && minaOlen.toLowerCase() === u.username.toLowerCase()) {
+    toiminto.className = "toiminnot";
+    toiminto.appendChild(
+      teeNappi({
+        teksti: "Salasana",
+        kuvake: KUVAKE.avain,
+        luokka: "nappi-hillitty",
+        toiminto: () => vaihdaSalasana(u.username),
+      })
+    );
+  }
+
+  tr.appendChild(toiminto);
+  return tr;
 }
 
 function merkki(teksti, luokka) {
