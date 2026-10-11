@@ -452,6 +452,14 @@ local function piirraLoot()
         NS.AvaaValinta()
       end)
       b:SetPoint("TOPLEFT", 4, -56)
+    elseif not NS.SivustonOfficer(NS.OmaNimi()) and NS.OnJohtajaTaiApulainen() then
+      -- Raid assist ilman killan officer-oikeutta. Ilman tata selitysta
+      -- nappi vain puuttuisi, eika mikaan kertoisi miksi.
+      teksti(rivi, "GameFontDisableSmall", 4, 0,
+        "Ei jakoa käynnissä.\n\n"
+        .. VIRHE .. "Sinulla on raid assist, mutta et ole officer\n"
+        .. "killan sivustolla — jakoa ei voi avata.|r\n"
+        .. "Pyydä officer-oikeutta tai anna jako toiselle.")
     else
       teksti(rivi, "GameFontDisableSmall", 4, 0,
         "Ei jakoa käynnissä.\n\nVastausikkuna aukeaa itsestään kun\n"
@@ -917,7 +925,13 @@ local function piirraJasenet()
     -- Paikalla oleva erottuu: lootmasteria kiinnostaa kuka on nyt mukana.
     local paikalla = raidissa[j.nimi]
     local vari = paikalla and "" or HIMMEA
-    teksti(rivi, "GameFontHighlightSmall", 4, 0, vari .. j.nimi .. "|r")
+
+    -- Officer merkitaan: siita nakee kuka voi avata jaon, ilman etta
+    -- tarvitsee arvata kenella on oikeudet sivustolla.
+    local merkki = (NS.db.officerit and NS.db.officerit[j.nimi])
+      and (KULTA .. " \226\151\134|r") or ""
+
+    teksti(rivi, "GameFontHighlightSmall", 4, 0, vari .. j.nimi .. "|r" .. merkki)
     teksti(rivi, "GameFontHighlightSmall", 150, 0, tostring(j.valintoja))
 
     -- Sivuston luku suluissa: siita nakee onko SAATU killan historia vai

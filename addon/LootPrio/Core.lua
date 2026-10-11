@@ -9,7 +9,7 @@
 local ADDON, NS = ...
 
 NS.NIMI = ADDON
-NS.VERSIO = "0.9"
+NS.VERSIO = "0.10"
 NS.VARI = "|cffc9a227"   -- sama kulta kuin sivustolla
 NS.LOPPU = "|r"
 
@@ -61,6 +61,10 @@ local OLETUKSET = {
   -- Hahmon muut kirjoitusasut: [alias pienella] = profiilin nimi. Peli ja
   -- sivusto eivat valttamatta kayta samaa muotoa.
   aliakset = {},
+
+  -- Killan officerit sivustolta: [hahmo] = true. Tyhja tarkoittaa "ei
+  -- tietoa", jolloin pelkka raidin arvo riittaa.
+  officerit = {},
 
   -- Minimap-napin kulma asteina. Sijainti sailyy istuntojen yli.
   minimapKulma = 200,
@@ -118,12 +122,57 @@ function NS.OmaPeliNimi()
   return UnitName("player")
 end
 
---- Onko pelaaja raidin johtaja tai apulainen.
+--- Onko pelaajalla killan officer-oikeudet sivustolla.
 ---
---- Officer-oikeus luetaan raidin arvosta eika killan arvosta: raidissa
---- loottia jakaa se jolla on raidin oikeudet, ei se jolla on kiltatunnus.
+--- Lista tulee viennin O-rivilla. Tyhja lista tarkoittaa "ei tietoa":
+--- vanha vienti ei sisalla sita, eika tuomaton addon tieda mitaan. Silloin
+--- ei rajoiteta - addon joka lukitsee itsensa puuttuvan datan takia on
+--- hyodyttomampi kuin addon joka luottaa raidin arvoon.
+function NS.SivustonOfficer(nimi)
+  local lista = NS.db and NS.db.officerit
+  if not lista then return true end
+
+  local kpl = 0
+  for _ in pairs(lista) do kpl = kpl + 1 end
+  if kpl == 0 then return true end
+
+  return lista[nimi] == true
+end
+
+--- Pelkka raidin arvo, ilman killan officer-tarkistusta.
+---
+--- Tarvitaan vain sen selittamiseen miksi jakonappi puuttuu: assist joka
+--- ei ole killan officer ansaitsee syyn, ei tyhjaa ruutua.
+function NS.OnJohtajaTaiApulainen(nimi)
+  nimi = nimi or NS.OmaNimi()
+
+  if not IsInRaid() then
+    return UnitIsGroupLeader("player") and nimi == NS.OmaNimi()
+  end
+
+  for i = 1, GetNumGroupMembers() do
+    local rNimi, rank = GetRaidRosterInfo(i)
+    if rNimi and NS.Nimi(rNimi) == nimi then
+      return (rank or 0) >= 1
+    end
+  end
+  return false
+end
+
+--- Onko pelaajalla oikeus avata jako ja nahda kaikkien vastaukset.
+---
+--- Vaatii seka raidin arvon etta killan officer-oikeuden. Raidin arvo
+--- yksin ei riita: assist annetaan usein markkereita varten eika loottia.
+--- Killan arvo yksin ei riita myoskaan: raidissa jakaa se jolla on raidin
+--- oikeudet, ei officer joka on paikalla vain katsomassa.
+---
+--- Kumpikaan ei tule viestin sisallosta - raidin arvo luetaan pelilta ja
+--- officer-lista tuodusta viennista - joten muokattu addon ei voi vaittaa
+--- olevansa kumpikaan.
 function NS.OnOfficer(nimi)
   nimi = nimi or NS.OmaNimi()
+
+  if not NS.SivustonOfficer(nimi) then return false end
 
   if not IsInRaid() then
     -- Ryhmassa ilman raidia johtaja riittaa.
@@ -145,8 +194,13 @@ end
 --- Eri asia kuin officer: apulaisia voi olla monta, johtaja on yksi. Vain
 --- johtaja voi ottaa kesken jaaneen jaon haltuunsa, koska muuten kaksi
 --- apulaista voisi riidella siita kumpi jakaa.
+---
+--- Vaatii myos killan officer-oikeuden: haltuunotto antaa oikeuden jakaa,
+--- eika sita voi saada helpommin kuin jaon avaamisen.
 function NS.OnJohtaja(nimi)
   nimi = nimi or NS.OmaNimi()
+
+  if not NS.SivustonOfficer(nimi) then return false end
 
   if not IsInRaid() then
     return UnitIsGroupLeader("player") and nimi == NS.OmaNimi()

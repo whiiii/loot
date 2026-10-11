@@ -85,6 +85,12 @@ function NS.JakoVarattu()
   -- Jaettu jako ei varaa mitaan: jaljella ei ole paatettavaa.
   if #NS.AvoimetItemit() == 0 then return nil end
 
+  -- Linjoilta pudonnut lootmaster ei varaa jakoa. Muuten yksi katkennut
+  -- yhteys lukitsisi koko illan jaon, eika sita saisi auki muuten kuin
+  -- haltuunotolla - ja haltuunotto vaatii johtajan, joka ei valttamatta
+  -- ole paikalla juuri silloin.
+  if not NS.Paikalla(s.lootmaster) then return nil end
+
   return s.lootmaster
 end
 

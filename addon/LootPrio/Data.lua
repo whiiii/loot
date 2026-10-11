@@ -36,6 +36,7 @@ function NS.Jasenna(teksti)
     profiilit = {},
     saadut = {},
     aliakset = {},
+    officerit = {},
     hahmoja = 0,
   }
 
@@ -81,6 +82,16 @@ function NS.Jasenna(teksti)
     end
   end
 
+  -- Killan officerit. Raidin arvo yksin ei riita jaon avaamiseen, koska
+  -- assist annetaan usein markkereita varten eika loottia.
+  local officerRivi = teksti:match("\nO=([^\n]*)")
+  if officerRivi then
+    for nimi in officerRivi:gmatch("[^,]+") do
+      nimi = nimi:match("^%s*(.-)%s*$")
+      if nimi ~= "" then tulos.officerit[nimi] = true end
+    end
+  end
+
   if tulos.hahmoja == 0 then
     return nil, "Yhtaan profiilia ei loytynyt."
   end
@@ -120,6 +131,7 @@ function NS.Tuo(teksti)
   NS.db.profiilit = data.profiilit
   NS.db.saadut = data.saadut
   NS.db.aliakset = data.aliakset
+  NS.db.officerit = data.officerit
   NS.db.raidinNimi = data.raidinNimi
   NS.db.tuotu = date("%Y-%m-%d %H:%M")
 

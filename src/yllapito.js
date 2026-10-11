@@ -640,6 +640,7 @@ export async function lukitseOma(env, kayttaja) {
  *   P=<hahmo>|<paikka>:<itemId>,<paikka>:<itemId>,...
  *   S=<hahmo>|<saatuja itemeita yhteensa>
  *   A=<hahmo>|<muu kirjoitusasu>,<muu kirjoitusasu>
+ *   O=<hahmo>,<hahmo>,...
  *
  * Pystyviiva ja pilkku eivat esiinny hahmonimissa eivatka numeroissa,
  * joten erottimia ei tarvitse suojata.
@@ -655,6 +656,11 @@ export async function lukitseOma(env, kayttaja) {
  * varmempaa kuin arvaaminen: vaara arvaus nakyisi vain siina, etta
  * kenenkaan profiili ei osu keneenkaan - ja se on juuri se virhe joka
  * viennissa oli.
+ *
+ * O-rivi on killan officerit. Addon ei paase verkkoon eika voi kysya
+ * kenella on oikeudet, joten ilman tata se joutuu luottamaan pelkkaan
+ * raidin arvoon - ja raid assist annetaan usein markkereita varten, ei
+ * loottia. Nain ylimaarainen assist ei avaa jakoa.
  */
 export async function teeVienti(env) {
   const raidi = await haeAktiiviRaidi(env);
@@ -696,7 +702,7 @@ export async function teeVienti(env) {
   ).all();
 
   const kayttajat = await env.DB.prepare(
-    `SELECT ${HAHMONIMI} AS hahmo, u.username, u.first_name, u.last_name
+    `SELECT ${HAHMONIMI} AS hahmo, u.username, u.first_name, u.last_name, u.role
        FROM users u
       WHERE u.protected = 0
       ORDER BY hahmo COLLATE NOCASE`
@@ -732,6 +738,14 @@ export async function teeVienti(env) {
 
     if (muut.length) out.push(`A=${u.hahmo}|${[...new Set(muut)].join(",")}`);
   }
+
+  // Officerit yhdella rivilla. Suojattu yllapitotunnus ei ole mukana: se
+  // on officer sivustolla mutta ei hahmo pelissa.
+  const officerit = (kayttajat.results ?? [])
+    .filter((u) => u.role === "officer" && u.hahmo && !/[|,]/.test(u.hahmo))
+    .map((u) => u.hahmo);
+
+  if (officerit.length) out.push(`O=${officerit.join(",")}`);
 
   return {
     ok: true,

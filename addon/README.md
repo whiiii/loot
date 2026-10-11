@@ -88,6 +88,29 @@ itemit ensin omiin laukkuihinsa ja laittaa ne sitten jakoon.
 8. **Avaa kauppa voittajan kanssa.** Assignatut itemit asettuvat
    vaihtopaikoille itsestään — ks. *Kauppa*-välilehti alla.
 
+## Kuka saa jakaa
+
+Jaon avaaminen vaatii **kaksi asiaa yhtä aikaa**:
+
+1. **Raid assist tai raid leader** pelissä, ja
+2. **officer-rooli killan sivustolla**.
+
+Raidin arvo yksin ei riitä, koska assist annetaan usein markkereita varten
+eikä loottia. Sivuston rooli yksin ei riitä myöskään: raidissa jakaa se
+jolla on raidin oikeudet, ei officer joka on paikalla vain katsomassa.
+
+Officer-lista tulee viennin mukana. Jos vientiä ei ole tuotu, listaa ei
+ole — silloin pelkkä raidin arvo riittää, koska itsensä lukitseva addon on
+hyödyttömämpi kuin luottavainen. **Jos joku saa officerin sivustolla kesken
+illan, vienti pitää tehdä uudelleen ennen kuin addon tietää siitä.**
+
+Jäsenet-listassa officerin nimen perässä on kultainen ◆.
+
+**Lootmaster on se joka avaa jaon.** Vain yksi jako voi olla kerrallaan
+auki, ja vain lootmaster voi antaa, perua, sulkea tai päättää sen. Jos
+lootmaster putoaa linjoilta, raidin johtaja voi ottaa jaon haltuunsa — ja
+jos hän ei ole paikalla, jako vapautuu itsestään toisen avattavaksi.
+
 ## Ennen raidia: tarkista addonit
 
 **Jäsenet → Tarkista addonit** kysyy koko raidin version. Lista näyttää
