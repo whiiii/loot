@@ -35,6 +35,7 @@ import {
   vaihdaRooli,
 } from "./yllapito.js";
 import { haeTuonnit, haeTuonti, poistaTuonti } from "./tuonnit.js";
+import { haeLoki, poistaLokirivi } from "./loki.js";
 
 export default {
   async fetch(request, env) {
@@ -109,14 +110,22 @@ async function sivu(request, env, polku) {
     return tiedosto(request, env, "/yllapito.html");
   }
 
-  if (polku === "/historia") {
+  // Officerin sivut. Rajapinnat tarkistavat saman erikseen, joten sivun
+  // piilottaminen on mukavuutta eika suojaus.
+  const OFFICERIN_SIVUT = {
+    "/historia": "/historia.html",
+    "/siirto": "/siirto.html",
+    "/loki": "/loki.html",
+  };
+
+  if (OFFICERIN_SIVUT[polku]) {
     if (!kayttaja) {
       return Response.redirect(new URL("/kirjaudu", request.url).toString(), 302);
     }
     if (kayttaja.role !== "officer") {
       return Response.redirect(new URL("/profiili", request.url).toString(), 302);
     }
-    return tiedosto(request, env, "/historia.html");
+    return tiedosto(request, env, OFFICERIN_SIVUT[polku]);
   }
 
   return tiedosto(request, env, polku);
@@ -223,8 +232,43 @@ async function rajapinta(request, env, polku) {
       env,
       kayttaja.username,
       String(body.username ?? ""),
-      !!body.locked
+      !!body.locked,
+      body.syy
     );
+    return json(tulos, tulos.error ? tulos.status : 200);
+  }
+
+  /* ---------- toimintoloki ---------- */
+
+  if (polku === "/api/loki") {
+    const p = new URL(request.url).searchParams;
+    return json({
+      ok: true,
+      // Poisto on vain suojatulla tunnuksella. Selain tarvitsee tiedon
+      // nappien piirtamiseen; palvelin tarkistaa saman uudelleen.
+      saaPoistaa: onSuojattu(kayttaja),
+      ...(await haeLoki(env, {
+        raja: p.get("raja"),
+        toiminto: p.get("toiminto"),
+        kohde: p.get("kohde"),
+      })),
+    });
+  }
+
+  if (polku === "/api/loki-poista" && request.method === "POST") {
+    // Loki jonka officer voi siivota ei ole loki vaan muistiinpano.
+    if (!onSuojattu(kayttaja)) {
+      return json(
+        { error: "Lokia voi poistaa vain ylläpitotunnuksella." },
+        403
+      );
+    }
+
+    const body = await lueJson(request);
+    const id = parseInt(body.id, 10);
+    if (!Number.isFinite(id)) return json({ error: "Puuttuva id." }, 400);
+
+    const tulos = await poistaLokirivi(env, kayttaja.username, id);
     return json(tulos, tulos.error ? tulos.status : 200);
   }
 

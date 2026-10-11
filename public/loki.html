@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Loki — Loot</title>
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/staattinen/favicon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Marcellus&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono&display=swap">
+<link rel="stylesheet" href="/staattinen/tyyli.css">
+<link rel="stylesheet" href="/staattinen/hahmo.css">
+<link rel="stylesheet" href="/staattinen/yllapito.css">
+<link rel="stylesheet" href="/staattinen/dialogi.css">
+</head>
+<body class="sivu">
+
+<header class="palkki">
+  <div>
+    <strong>Loki</strong>
+    <span class="himmea" id="yhteenveto"></span>
+  </div>
+  <div class="palkki-oikea">
+    <a class="pieni linkkinappi" href="/yllapito">Ylläpito</a>
+    <a class="pieni linkkinappi" href="/siirto">Siirto</a>
+    <a class="pieni linkkinappi" href="/historia">Tuontihistoria</a>
+    <button class="pieni" id="ulos">Kirjaudu ulos</button>
+  </div>
+</header>
+
+<main class="yllapito">
+
+  <section>
+    <h2>Toimintoloki</h2>
+    <p class="pieni-teksti himmea" id="selite">
+      Kuka teki, mitä, kenelle ja milloin. Officer näkee lokin mutta ei voi
+      muuttaa sitä — loki jonka kohde voi siivota ei ole loki.
+      Lukon avaaminen vaatii syyn, ja syy näkyy tässä.
+    </p>
+
+    <div class="napit" style="margin-bottom:.9rem">
+      <select id="suodatin" class="roolivalinta">
+        <option value="">Kaikki toiminnot</option>
+      </select>
+      <input type="text" id="haku" class="tuonti-nimi" maxlength="40"
+             placeholder="Suodata nimellä (tekijä tai kohde)">
+      <button class="pieni" id="tyhjenna-haku">Tyhjennä</button>
+    </div>
+
+    <table class="lista">
+      <thead>
+        <tr>
+          <th>Aika</th>
+          <th>Tekijä</th>
+          <th>Toiminto</th>
+          <th>Kohde</th>
+          <th>Lisätiedot</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="loki">
+        <tr><td colspan="6" class="himmea">Ladataan…</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+</main>
+
+<div class="viesti" id="viesti"></div>
+
+<script src="/staattinen/dialogi.js"></script>
+<script src="/staattinen/loki.js"></script>
+</body>
+</html>

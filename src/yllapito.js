@@ -124,13 +124,21 @@ export async function haeKayttajat(env) {
   };
 }
 
+/** Lyhin hyvaksyttava perustelu. Kolme merkkia karsii vahingot, ei muuta. */
+export const SYY_MIN = 3;
+
 /**
  * Avaa tai sulkee profiilin lukon.
  *
  * Officerin omaa lukkoa ei tarvitse koskea, koska lukko ei rajoita hanta -
  * mutta se sallitaan silti, jotta tila on yhtenainen.
+ *
+ * Avaaminen vaatii perustelun. Lukko on se mika estaa valintojen
+ * muuttamisen kesken tierin, joten sen avaaminen on juuri se teko josta
+ * myohemmin kysytaan - ja kysyja ansaitsee muunkin vastauksen kuin nimen
+ * ja kellonajan. Sulkeminen ei vaadi mitaan: se palauttaa normaalitilan.
  */
-export async function asetaLukko(env, actor, username, locked) {
+export async function asetaLukko(env, actor, username, locked, syy) {
   const kohde = await env.DB.prepare(
     "SELECT id, username, locked, protected FROM users WHERE username = ?"
   )
@@ -142,11 +150,22 @@ export async function asetaLukko(env, actor, username, locked) {
   const esto = esta(kohde, "lukita");
   if (esto) return esto;
 
+  const perustelu = String(syy ?? "").trim().slice(0, 200);
+
+  if (!locked && perustelu.length < SYY_MIN) {
+    return {
+      error: `Lukon avaaminen vaatii syyn (vähintään ${SYY_MIN} merkkiä).`,
+      status: 400,
+    };
+  }
+
   await env.DB.prepare("UPDATE users SET locked = ? WHERE id = ?")
     .bind(locked ? 1 : 0, kohde.id)
     .run();
 
-  await kirjaa(env, actor, locked ? "LUKITSE" : "AVAA_LUKKO", kohde.username, null);
+  await kirjaa(env, actor, locked ? "LUKITSE" : "AVAA_LUKKO", kohde.username,
+    locked ? null : perustelu);
+
   return { ok: true, username: kohde.username, locked: locked ? 1 : 0 };
 }
 
@@ -440,7 +459,14 @@ export async function paivitaHahmo(env, actor, username, muutokset) {
     .bind(...arvot, kohde.id)
     .run();
 
-  await kirjaa(env, actor, "PAIVITA_HAHMO", kohde.username, kentat.join(", "));
+  // Lokiin se mika muuttui ja miksi, ei SQL-lausetta. Aiemmin tahan
+  // paatyi "class = ?, raid_role = ?", joka nayttaa rikkinaiselta eika
+  // kerro mihin arvoon mikaan meni.
+  const muutosteksti = kentat
+    .map((k, i) => `${k.replace(" = ?", "")}=${arvot[i] ?? "—"}`)
+    .join(", ");
+
+  await kirjaa(env, actor, "PAIVITA_HAHMO", kohde.username, muutosteksti);
 
   return {
     ok: true,

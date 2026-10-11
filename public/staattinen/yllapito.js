@@ -407,12 +407,23 @@ function merkki(teksti, luokka) {
 }
 
 async function vaihdaLukko(username, locked) {
+  // Avaaminen vaatii syyn, sulkeminen ei. Lukko on se mikä estää
+  // valintojen muuttamisen kesken tierin, joten sen avaaminen on se teko
+  // josta myöhemmin kysytään — ja syy tallentuu lokiin.
   const ok = await vahvista({
     otsikko: locked ? "Lukitse profiili" : "Avaa lukko",
     teksti: locked
       ? `${username} ei pysty enää muuttamaan valintojaan.`
-      : `${username} pääsee muuttamaan valintojaan.`,
+      : `${username} pääsee muuttamaan valintojaan.\n\n` +
+        "Kirjoita syy. Se tallentuu lokiin eikä sitä voi jälkikäteen muuttaa.",
     vahvista: locked ? "Lukitse" : "Avaa",
+    syote: locked
+      ? null
+      : {
+          vihje: "Syy, esim. vaihtoi specciä",
+          minimi: 3,
+          virhe: "Kirjoita syy (vähintään 3 merkkiä).",
+        },
   });
   if (!ok) return;
 
@@ -420,7 +431,11 @@ async function vaihdaLukko(username, locked) {
     const d = await fetch("/api/lukko", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ username, locked }),
+      body: JSON.stringify({
+        username,
+        locked,
+        syy: locked ? null : ok,
+      }),
     }).then((r) => r.json());
 
     if (!d.ok) {
@@ -587,81 +602,6 @@ async function poistaKayttaja(u) {
     naytaViesti("Virhe: " + (err && err.message ? err.message : String(err)));
   }
 }
-
-/* ---------- vienti ---------- */
-
-$("luo-vienti").addEventListener("click", async () => {
-  try {
-    const d = await fetch("/api/vienti").then((r) => r.json());
-    if (!d.ok) {
-      naytaViesti(d.error || "Vienti epäonnistui.");
-      return;
-    }
-
-    const ta = $("vienti");
-    ta.value = d.teksti;
-    ta.hidden = false;
-    $("kopioi").hidden = false;
-    $("vientitiedot").textContent =
-      `${d.raid} — ${d.hahmoja} hahmoa, ${d.teksti.length} merkkiä.`;
-  } catch (err) {
-    naytaViesti("Virhe: " + (err && err.message ? err.message : String(err)));
-  }
-});
-
-$("tuo-historia").addEventListener("click", async () => {
-  const teksti = $("historia").value.trim();
-  if (!teksti) {
-    naytaViesti("Liitä ensin addonin vienti.");
-    return;
-  }
-
-  try {
-    const d = await fetch("/api/historia", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ teksti, label: $("tuonti-nimi").value.trim() }),
-    }).then((r) => r.json());
-
-    if (!d.ok) {
-      naytaViesti(d.error || "Tuonti epäonnistui.");
-      return;
-    }
-
-    // Kerrotaan myos se mita EI tunnistettu. Nimi joka ei vastaa ketaan
-    // kirjautuu historiaan mutta ei nay kenenkaan profiilissa, ja se on
-    // juuri se tapaus joka jaisi muuten huomaamatta.
-    const osat = [`${d.uusia} uutta riviä (${d.rivit} yhteensä)`];
-    if (d.tunnistamattomia > 0) {
-      osat.push(`${d.tunnistamattomia} nimeä ei vastaa ketään jäsentä`);
-    }
-    if (d.ohitettu > 0) osat.push(`${d.ohitettu} riviä ohitettu`);
-
-    osat.push('<a href="/historia">Katso loki</a>');
-
-    $("tuontitiedot").innerHTML = osat.join(" · ");
-    $("historia").value = "";
-    $("tuonti-nimi").value = "";
-    naytaViesti("Loottihistoria tuotu.");
-    lataa();
-  } catch (err) {
-    naytaViesti("Virhe: " + (err && err.message ? err.message : String(err)));
-  }
-});
-
-$("kopioi").addEventListener("click", async () => {
-  const ta = $("vienti");
-  try {
-    // Leikepöydän rajapinta vaatii turvallisen yhteyden ja voi silti
-    // epäonnistua. Valinta kenttään on varatie, joka toimii aina.
-    await navigator.clipboard.writeText(ta.value);
-    naytaViesti("Kopioitu leikepöydälle.");
-  } catch {
-    ta.focus();
-    ta.select();
-    naytaViesti("Kopioi näppäimistöltä: Ctrl+C");
-  }
-});
 
 /* ---------- apurit ---------- */
 

@@ -87,6 +87,16 @@ export async function poistaTuonti(env, actor, id) {
 
   await env.DB.prepare("DELETE FROM loot_import WHERE id = ?").bind(id).run();
 
+  // Lokiin, koska tuonnin poisto haivyttaa itemeita myos profiileista -
+  // se on juuri sellainen teko josta myohemmin kysytaan.
+  await env.DB.prepare(
+    `INSERT INTO audit_log (actor, action, target, details)
+     VALUES (?, 'POISTA_TUONTI', ?, ?)`
+  )
+    .bind(actor, loki.label || loki.zone || String(id),
+      `${poistetut.meta?.changes ?? 0} riviä, toi ${loki.imported_by}`)
+    .run();
+
   return {
     ok: true,
     id,

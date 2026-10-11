@@ -23,7 +23,9 @@
     <span class="himmea" id="raidi"></span>
   </div>
   <div class="palkki-oikea">
+    <a class="pieni linkkinappi" href="/siirto">Siirto</a>
     <a class="pieni linkkinappi" href="/historia">Tuontihistoria</a>
+    <a class="pieni linkkinappi" href="/loki">Loki</a>
     <a class="pieni linkkinappi" href="/profiili">Oma profiili</a>
     <button class="pieni" id="ulos">Kirjaudu ulos</button>
   </div>
@@ -104,32 +106,10 @@
   </section>
 
   <section>
-    <h2>Vienti addoniin</h2>
-    <p class="himmea pieni-teksti" id="vientitiedot">
-      Luo teksti, jonka liität addoniin pelissä.
+    <p class="pieni-teksti himmea">
+      Vienti addoniin ja tuonti addonista ovat omalla
+      <a href="/siirto">Siirto</a>-sivullaan.
     </p>
-    <div class="napit">
-      <button class="nappi-ensisijainen" id="luo-vienti">Luo vienti</button>
-      <button class="pieni" id="kopioi" hidden>Kopioi leikepöydälle</button>
-    </div>
-    <textarea id="vienti" rows="10" spellcheck="false" readonly hidden></textarea>
-  </section>
-
-  <section>
-    <h2>Tuonti addonista</h2>
-    <p class="himmea pieni-teksti" id="tuontitiedot">
-      Liitä addonin <strong>Historia → Luo vienti sivustolle</strong> -teksti.
-      Jaetut itemit merkitään profiileihin. Jokainen tuonti tallentuu omana
-      lokinaan <a href="/historia">Tuontihistoriaan</a>, joten saman viikon
-      eri raidit pysyvät erillään.
-    </p>
-    <textarea id="historia" rows="6" spellcheck="false"
-              placeholder="LOOTHIST1&#10;RAID=…&#10;ZONE=Molten Core&#10;SIZE=40&#10;L=18817|Betonimylly|2026-10-10 20:05:00|87|prio|Molten Core"></textarea>
-    <div class="napit" style="margin-top:.75rem">
-      <input type="text" id="tuonti-nimi" maxlength="60" class="tuonti-nimi"
-             placeholder="Lokin nimi, esim. MC 40 ke (vapaaehtoinen)">
-      <button class="nappi-ensisijainen" id="tuo-historia">Tuo loottihistoria</button>
-    </div>
   </section>
 
 </main>
