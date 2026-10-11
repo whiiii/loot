@@ -287,6 +287,65 @@ local function itemNimi(item)
   return nimi or ("item " .. item.itemId), laatu or 1
 end
 
+--- Tamanhetkisen jaon tulokset: kuka sai ja milla napilla.
+---
+--- Tama on se mika raiderille nakyy. Han ei nae ketka vastasivat mita
+--- aanestyksen aikana, mutta lopputulos ja sen peruste ovat avoimia -
+--- muuten lootmasterin paatosta ei voisi seurata lainkaan.
+---
+--- Officerille sama lista on yhteenveto illan kulusta vastauslistan alla.
+local function piirraJaetut(sisalto, y)
+  local sessio = NS.sessio
+  if not sessio then return y end
+
+  local jaetut = {}
+  for _, item in pairs(sessio.itemit) do
+    if item.jaettu then jaetut[#jaetut + 1] = item end
+  end
+  if #jaetut == 0 then return y end
+
+  table.sort(jaetut, function(a, b) return a.indeksi < b.indeksi end)
+
+  local otsikko = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
+  otsikko:SetPoint("TOPLEFT", 0, y - 8)
+  otsikko:SetPoint("TOPRIGHT", 0, y - 8)
+  otsikko:SetHeight(18)
+  teksti(otsikko, "GameFontNormalSmall", 8, 0, "JAETUT")
+  y = y - 28
+
+  local luokat = NS.RaidinLuokat()
+
+  for _, item in ipairs(jaetut) do
+    local nimi, laatu = itemNimi(item)
+
+    local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
+    rivi:SetPoint("TOPLEFT", 0, y)
+    rivi:SetPoint("TOPRIGHT", 0, y)
+    rivi:SetHeight(22)
+
+    local kuvake = teeIkoni(rivi, 18, item)
+    kuvake:SetPoint("TOPLEFT", 8, -2)
+    itemTooltip(kuvake, item.linkki, item.itemId)
+
+    local lyhyt = nimi:len() > 24 and (nimi:sub(1, 23) .. "…") or nimi
+    teksti(rivi, "GameFontHighlightSmall", 32, -4, varilla(laatu, lyhyt))
+
+    teksti(rivi, "GameFontHighlightSmall", 210, -4,
+      OK .. "→|r " .. pelaajanVari(luokat[item.saaja])
+        .. (item.saaja or "?") .. "|r")
+
+    -- Milla napilla: ilman perustetta lista kertoisi vain lopputuloksen,
+    -- ei sita miksi se on se.
+    local vast = item.saajanKoodi and NS.VASTAUS[item.saajanKoodi]
+    teksti(rivi, "GameFontHighlightSmall", 340, -4,
+      vast and (vast.vari .. vast.nimi .. "|r") or (HIMMEA .. "—|r"))
+
+    y = y - 22
+  end
+
+  return y
+end
+
 local function piirraLoot()
   local kehys = nakymat.loot
 
@@ -410,11 +469,16 @@ local function piirraLoot()
   if #avoimet == 0 then
     local rivi = lisaaLapsi(sisalto, CreateFrame("Frame", nil, sisalto))
     rivi:SetPoint("TOPLEFT", 0, -4)
-    teksti(rivi, "GameFontNormal", 4, 0,
-      OK .. "Kaikki jaettu.|r")
-    teksti(rivi, "GameFontDisableSmall", 4, -22,
-      "Tulokset löytyvät Historia-välilehdeltä.")
-    sisalto:SetHeight(60)
+    rivi:SetHeight(40)
+    teksti(rivi, "GameFontNormal", 4, 0, OK .. "Kaikki jaettu.|r")
+    teksti(rivi, "GameFontDisableSmall", 4, -20,
+      "Tulokset jäävät Historia-välilehdelle.")
+
+    -- Tulokset nakyviin myos tassa: ilman niita viimeisen itemin jalkeen
+    -- jaisi tyhja ruutu juuri silloin kun kaikkia kiinnostaa mita meni
+    -- kenellekin.
+    local y = piirraJaetut(sisalto, -44)
+    sisalto:SetHeight(math.max(1, -y))
     return
   end
 
@@ -451,14 +515,20 @@ local function piirraLoot()
       kuva:SetVertexColor(0.45, 0.45, 0.45)
     end
 
-    -- Vastaamattomien maara kuvakkeen kulmaan: siita nakee yhdella
+    -- Vastanneiden maara kuvakkeen kulmaan: siita nakee yhdella
     -- silmayksella mika item odottaa viela vastauksia.
-    local vastanneet = 0
-    for _ in pairs(item.vastaukset) do vastanneet = vastanneet + 1 end
+    --
+    -- Vain niille jotka saavat nahda vastaukset. Luku ei kerro kuka
+    -- vastasi mita, mutta se on silti tietoa aanestyksen kulusta - ja
+    -- raiderin kuuluu nahda vasta lopputulos.
+    if NS.NaytaKaikkiVastaukset() then
+      local vastanneet = 0
+      for _ in pairs(item.vastaukset) do vastanneet = vastanneet + 1 end
 
-    local luku = b:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
-    luku:SetPoint("BOTTOMRIGHT", -1, 1)
-    luku:SetText(vastanneet > 0 and tostring(vastanneet) or "")
+      local luku = b:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+      luku:SetPoint("BOTTOMRIGHT", -1, 1)
+      luku:SetText(vastanneet > 0 and tostring(vastanneet) or "")
+    end
 
     b:SetScript("OnClick", function()
       sessio.valittu = item.indeksi
@@ -665,6 +735,8 @@ local function piirraLoot()
         #puuttuu > 6 and ", …" or ""))
     y = y - 36
   end
+
+  y = piirraJaetut(sisalto, y)
 
   sisalto:SetHeight(math.max(1, -y))
 end
@@ -1083,7 +1155,7 @@ local function piirraAsetukset()
       "UICheckButtonTemplate")
     valinta:SetPoint("TOPLEFT", 2, -8)
     valinta:SetSize(24, 24)
-    _G[valinta:GetName() .. "Text"]:SetText("Koko raidi näkee kaikkien vastaukset")
+    _G[valinta:GetName() .. "Text"]:SetText("Myös raiderit näkevät kaikki vastaukset")
     valinta:SetScript("OnClick", function(self)
       NS.db.rollienNakyvyys = self:GetChecked() and "raid" or "officers"
       paivitaTila()
@@ -1094,10 +1166,11 @@ local function piirraAsetukset()
     selite:SetPoint("TOPLEFT", 6, -36)
     selite:SetPoint("TOPRIGHT", -6, -36)
     selite:SetJustifyH("LEFT")
-    selite:SetText("Pois päältä raiderit näkevät vain oman vastauksensa, "
-      .. "officerit kaikki. Asetus koskee vain sinun avaamiasi jakoja, ja se "
-      .. "on näkyvyysvalinta eikä salaisuus: tiedot kulkevat raidikanavalla "
-      .. "joka tapauksessa.")
+    selite:SetText("Pois päältä raideri näkee oman vastauksensa ja sen mitä "
+      .. "on jo jaettu — kuka sai ja millä napilla. Officerit näkevät kaikkien "
+      .. "vastaukset, jotta itemistä voi keskustella ennen antamista. Asetus "
+      .. "koskee vain sinun avaamiasi jakoja, ja se on näkyvyysvalinta eikä "
+      .. "salaisuus: tiedot kulkevat raidikanavalla joka tapauksessa.")
 
     local ilmoita = CreateFrame("CheckButton", "LootPrioIlmoita", kehys,
       "UICheckButtonTemplate")
@@ -1514,6 +1587,31 @@ function NS.PaivitaAanestys()
   aanestys.selite:SetText(omaPrio
     and (KULTA .. "Tämä item on profiilissasi.|r")
     or (HIMMEA .. "Ei profiilissasi — LootPrio ei käytössä.|r"))
+
+  -- Viimeksi jaettu nakyviin tassakin. Raiderin ei tarvitse avata
+  -- paaikkunaa nahdakseen mita edellisesta itemista tuli.
+  local viimeisin
+  for _, i in pairs(NS.sessio.itemit) do
+    if i.jaettu and (not viimeisin or i.indeksi > viimeisin.indeksi) then
+      viimeisin = i
+    end
+  end
+
+  if viimeisin then
+    local vNimi, vLaatu = itemNimi(viimeisin)
+    local vast = viimeisin.saajanKoodi and NS.VASTAUS[viimeisin.saajanKoodi]
+    local luokat = NS.RaidinLuokat()
+
+    aanestys.tulos:SetText(("%sViimeksi:|r %s %s→|r %s%s|r %s"):format(
+      HIMMEA,
+      varilla(vLaatu, vNimi),
+      OK,
+      pelaajanVari(luokat[viimeisin.saaja]),
+      viimeisin.saaja or "?",
+      vast and (vast.vari .. vast.nimi .. "|r") or ""))
+  else
+    aanestys.tulos:SetText("")
+  end
 end
 
 function NS.AvaaAanestys()
@@ -1522,7 +1620,7 @@ function NS.AvaaAanestys()
   if not aanestys then
     aanestys = CreateFrame("Frame", "LootPrioAanestys", UIParent,
       "BasicFrameTemplateWithInset")
-    aanestys:SetSize(400, 170)
+    aanestys:SetSize(420, 196)
     aanestys:SetPoint("CENTER", 0, 160)
     aanestys:SetMovable(true)
     aanestys:EnableMouse(true)
@@ -1563,6 +1661,12 @@ function NS.AvaaAanestys()
     aanestys.selite:SetPoint("TOPLEFT", 16, -86)
     aanestys.selite:SetPoint("TOPRIGHT", -16, -86)
     aanestys.selite:SetJustifyH("LEFT")
+
+    aanestys.tulos = aanestys:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    aanestys.tulos:SetPoint("TOPLEFT", 16, -106)
+    aanestys.tulos:SetPoint("TOPRIGHT", -16, -106)
+    aanestys.tulos:SetJustifyH("LEFT")
+    aanestys.tulos:SetWordWrap(false)
 
     -- Napit isoina ja yhdella rivilla: ne painetaan kesken taistelun
     -- jalkipyykin, eika pieni nappi osu.

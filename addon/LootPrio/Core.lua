@@ -9,7 +9,7 @@
 local ADDON, NS = ...
 
 NS.NIMI = ADDON
-NS.VERSIO = "0.8.1"
+NS.VERSIO = "0.9"
 NS.VARI = "|cffc9a227"   -- sama kulta kuin sivustolla
 NS.LOPPU = "|r"
 
