@@ -362,33 +362,40 @@ function solu(teksti) {
  * profiili, joten se ei kuulu profiililistaan.
  */
 function piirraYllapito(users) {
-  const laatikko = $("yllapitotieto");
-  laatikko.innerHTML = "";
+  const teksti = $("yllapitotieto");
+  const napit = $("yllapitonapit");
+
+  teksti.textContent = "";
+  napit.innerHTML = "";
 
   const suojatut = users.filter((u) => u.protected);
-  laatikko.hidden = suojatut.length === 0;
-  if (laatikko.hidden) return;
 
-  for (const u of suojatut) {
-    laatikko.appendChild(merkki("Ylläpito", "yllapito"));
+  teksti.hidden = suojatut.length === 0;
+  napit.hidden = true;
+  if (teksti.hidden) return;
 
-    const teksti = document.createElement("span");
-    teksti.textContent =
-      `${u.username} — sivuston varauloskäynti. Ei hahmo, ei muokattavissa.`;
-    laatikko.appendChild(teksti);
+  teksti.textContent =
+    "Ylläpito: " +
+    suojatut.map((u) => u.username).join(", ") +
+    " — sivuston varauloskäynti. Ei hahmo eikä muokattavissa.";
 
-    // Salasanan saa vaihtaa vain tunnus itse, joten nappi nakyy vain
-    // omalla kohdalla. Muualla se lupaisi toimen jota palvelin ei salli.
-    if (minaOlen && minaOlen.toLowerCase() === u.username.toLowerCase()) {
-      laatikko.appendChild(
-        teeNappi({
-          teksti: "Salasana",
-          kuvake: KUVAKE.avain,
-          luokka: "nappi-hillitty",
-          toiminto: () => vaihdaSalasana(u.username),
-        })
-      );
-    }
+  // Salasanan saa vaihtaa vain tunnus itse, joten nappi nakyy vain silloin
+  // kun olet kirjautunut silla. Muuten se lupaisi toimen jota palvelin ei
+  // salli.
+  const oma = suojatut.find(
+    (u) => minaOlen && minaOlen.toLowerCase() === u.username.toLowerCase()
+  );
+
+  if (oma) {
+    napit.hidden = false;
+    napit.appendChild(
+      teeNappi({
+        teksti: "Vaihda salasana",
+        kuvake: KUVAKE.avain,
+        luokka: "nappi-hillitty",
+        toiminto: () => vaihdaSalasana(oma.username),
+      })
+    );
   }
 }
 
