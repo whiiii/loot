@@ -9,7 +9,6 @@
 local ADDON, NS = ...
 
 NS.NAME = ADDON
-NS.VERSION = "0.10"
 NS.GOLD = "|cffc9a227"   -- same gold as the website
 NS.RESET = "|r"
 
@@ -87,20 +86,31 @@ function NS.Print(...)
   print(NS.GOLD .. "LootPrio" .. NS.RESET .. ":", ...)
 end
 
---- The Interface number declared by our own .toc.
+--- A field from our own .toc.
 ---
 --- The API moved into the C_AddOns namespace partway through Classic's
 --- life. Both are supported, because this addon's whole problem is that
 --- the client version is not certain.
-function NS.TocInterface()
+local function tocField(field)
   if C_AddOns and C_AddOns.GetAddOnMetadata then
-    return C_AddOns.GetAddOnMetadata(ADDON, "Interface")
+    return C_AddOns.GetAddOnMetadata(ADDON, field)
   end
   if GetAddOnMetadata then
-    return GetAddOnMetadata(ADDON, "Interface")
+    return GetAddOnMetadata(ADDON, field)
   end
   return nil
 end
+
+--- The Interface number declared by our own .toc.
+function NS.TocInterface()
+  return tocField("Interface")
+end
+
+-- The version comes from the .toc rather than being written out here as
+-- well. Two copies drift apart, and they already had: the .toc said 0.11
+-- while this file said 0.10, so the load message named a version nobody
+-- was running.
+NS.VERSION = tocField("Version") or "?"
 
 --- The player's name in the profiles' form.
 ---

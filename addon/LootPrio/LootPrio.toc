@@ -1,8 +1,8 @@
-﻿## Interface: 11601
+﻿## Interface: 16001
 ## Title: LootPrio
 ## Notes: Raidin loottiprioriteetit killan sivustolta.
 ## Author: Kilta
-## Version: 0.11
+## Version: 0.12
 ## SavedVariables: LootPrioDB
 
 # Load order matters: Core defines the namespace and the settings that
