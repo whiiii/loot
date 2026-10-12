@@ -47,9 +47,9 @@ function NS.ItemFromLink(link)
   if not itemId then return nil end
 
   -- The link can also be pasted as plain text, so make sure the game
-  -- knows the item. GetItemInfo returns nil if the data has not loaded
+  -- knows the item. The lookup returns nil if the data has not loaded
   -- yet — then the id is used and the name fills in later.
-  local name, fullLink, quality = GetItemInfo(itemId)
+  local name, fullLink, quality = NS.ItemInfo(itemId)
 
   return {
     itemId = itemId,
@@ -73,10 +73,10 @@ function NS.BagItems(minQuality)
       local link = bagItemLink(bag, slot)
 
       if link then
-        local name, _, quality = GetItemInfo(link)
+        local name, _, quality = NS.ItemInfo(link)
         local itemId = NS.ItemIdFromLink(link)
 
-        if itemId and quality and quality >= minQuality and IsEquippableItem(link) then
+        if itemId and quality and quality >= minQuality and NS.IsEquippable(link) then
           result[#result + 1] = {
             bag = bag,
             slot = slot,
@@ -186,7 +186,7 @@ function NS.StartTest()
   local chosen = {}
   for i = 1, math.min(4, #ranked) do
     local itemId = ranked[i].itemId
-    local name, link, quality = GetItemInfo(itemId)
+    local name, link, quality = NS.ItemInfo(itemId)
     chosen[#chosen + 1] = {
       itemId = itemId,
       link = link,

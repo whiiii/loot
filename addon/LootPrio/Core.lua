@@ -106,6 +106,99 @@ function NS.TocInterface()
   return tocField("Interface")
 end
 
+--------------------------------------------------------------------------
+-- Game API compatibility
+--------------------------------------------------------------------------
+
+--[[
+  The item functions live in different places on different clients.
+
+  They were plain globals for most of WoW's life and later moved into the
+  C_Item namespace. This addon runs on a client whose version number
+  matches no Blizzard build, so "this is Classic, therefore GetItemInfo
+  exists" does not hold -- on WoW Forever 1.60.1 there is no global
+  GetItemInfo at all, and calling it took the test mode down.
+
+  The container functions already had this treatment in Loot.lua and
+  Trade.lua. These are the same problem, missed because they happened to
+  work on the client they were written against.
+
+  Nothing here raises an error when a client has neither name. Every
+  caller already handles nil, because the game itself returns nil for an
+  item whose data has not loaded yet -- so a missing function degrades
+  into "the name fills in later", not into a broken addon.
+]]
+
+--- Item details: name, link, quality and the rest, as GetItemInfo gives.
+function NS.ItemInfo(key)
+  if not key then return nil end
+  if C_Item and C_Item.GetItemInfo then return C_Item.GetItemInfo(key) end
+  if GetItemInfo then return GetItemInfo(key) end
+  return nil
+end
+
+--- An item's icon texture.
+function NS.ItemIcon(itemId)
+  if not itemId then return nil end
+  if C_Item and C_Item.GetItemIconByID then return C_Item.GetItemIconByID(itemId) end
+  if GetItemIcon then return GetItemIcon(itemId) end
+
+  -- The instant variant knows the icon without the item being cached, and
+  -- hands it back as the fifth return value.
+  local instant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+  if instant then return (select(5, instant(itemId))) end
+  return nil
+end
+
+--- Can the item be worn. Used to keep flasks and cloth out of the bag list.
+---
+--- An unknown client answers yes. Too many items in the list is a nuisance
+--- the quality filter still trims; too few would look like the addon
+--- cannot see the bags at all.
+function NS.IsEquippable(link)
+  if C_Item and C_Item.IsEquippableItem then return C_Item.IsEquippableItem(link) end
+  if IsEquippableItem then return IsEquippableItem(link) end
+  return true
+end
+
+--- Which of the APIs this addon needs the client actually has.
+---
+--- Printed by /lp api. On a client that reports a version number matching
+--- no Blizzard build, asking it directly beats reasoning about which
+--- expansion it resembles -- and it turns "the addon does nothing" into
+--- one line naming the function that is missing.
+function NS.ReportApi()
+  local paths = {
+    "GetItemInfo", "C_Item.GetItemInfo",
+    "GetItemIcon", "C_Item.GetItemIconByID",
+    "GetItemInfoInstant", "C_Item.GetItemInfoInstant",
+    "IsEquippableItem", "C_Item.IsEquippableItem",
+    "GetContainerNumSlots", "C_Container.GetContainerNumSlots",
+    "GetContainerItemLink", "C_Container.GetContainerItemLink",
+    "PickupContainerItem", "C_Container.PickupContainerItem",
+    "C_ChatInfo.SendAddonMessage",
+    "GetRaidRosterInfo", "GetInstanceInfo", "GetNumGroupMembers",
+    "SendChatMessage", "ClickTargetTradeButton", "RAID_CLASS_COLORS",
+  }
+
+  NS.Print(("client %s, .toc %s"):format(
+    tostring(select(4, GetBuildInfo())), tostring(NS.TocInterface())))
+
+  for _, path in ipairs(paths) do
+    local namespace, field = path:match("^(%w+)%.(%w+)$")
+    local value
+
+    if namespace then
+      local container = _G[namespace]
+      value = container and container[field]
+    else
+      value = _G[path]
+    end
+
+    NS.Print((value and "  + " or "  - ") .. path)
+  end
+end
+
 -- The version comes from the .toc rather than being written out here as
 -- well. Two copies drift apart, and they already had: the .toc said 0.11
 -- while this file said 0.10, so the load message named a version nobody
@@ -372,7 +465,9 @@ SlashCmdList.LOOTPRIO = function(input)
     NS.Open("history")
   elseif command == "kauppa" or command == "trade" then
     NS.Open("trade")
+  elseif command == "api" then
+    NS.ReportApi()
   else
-    NS.Print("käytä: /lp  (avaa ikkunan)")
+    NS.Print("käytä: /lp  (avaa ikkunan)  tai  /lp api  (clientin API-tuki)")
   end
 end

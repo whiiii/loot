@@ -39,7 +39,7 @@ end
 --- has never been seen: the number is enough.
 local function iconPath(item)
   if item.icon then return item.icon end
-  if item.itemId and GetItemIcon then return GetItemIcon(item.itemId) end
+  if item.itemId then return NS.ItemIcon(item.itemId) end
   return nil
 end
 
@@ -285,7 +285,7 @@ end
 --- from the game's database — which may not know the item immediately.
 local function itemName(item)
   if item.name then return item.name, item.quality or 1 end
-  local name, _, quality = GetItemInfo(item.itemId)
+  local name, _, quality = NS.ItemInfo(item.itemId)
   return name or ("item " .. item.itemId), quality or 1
 end
 
@@ -823,7 +823,7 @@ local function drawTrade()
     row:SetHeight(18)
 
     local name = entry.itemName
-    if not name and entry.itemId then name = GetItemInfo(entry.itemId) end
+    if not name and entry.itemId then name = NS.ItemInfo(entry.itemId) end
     name = name or ("item " .. tostring(entry.itemId))
     if name:len() > 28 then name = name:sub(1, 27) .. "…" end
 
@@ -1090,7 +1090,7 @@ local function drawHistory()
     row:SetHeight(16)
 
     local name = entry.itemName
-    if not name and entry.itemId then name = GetItemInfo(entry.itemId) end
+    if not name and entry.itemId then name = NS.ItemInfo(entry.itemId) end
     name = name or ("item " .. tostring(entry.itemId))
     if name:len() > 26 then name = name:sub(1, 25) .. "…" end
 

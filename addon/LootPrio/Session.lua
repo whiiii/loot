@@ -280,7 +280,7 @@ local function sessionAwards()
       end
 
       local name = item.name
-      if not name and item.itemId then name = GetItemInfo(item.itemId) end
+      if not name and item.itemId then name = NS.ItemInfo(item.itemId) end
 
       local row = perPlayer[item.winner]
       row[#row + 1] = name or ("item " .. tostring(item.itemId))
