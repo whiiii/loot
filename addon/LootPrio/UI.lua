@@ -186,14 +186,27 @@ end
 -- Main window and navigation
 --------------------------------------------------------------------------
 
+-- The tab titles are the game's own words, not translations of them.
+-- Nobody says "kauppaikkuna" mid-raid, everyone says trade -- and a
+-- correct translation of a term players never translate is still the
+-- wrong word. The same reason the slot names on the website are English.
 local NAV = {
   { key = "loot",     title = "Loot" },
-  { key = "trade",    title = "Kauppa" },
+  { key = "trade",    title = "Trade" },
   { key = "members",  title = "Jäsenet" },
   { key = "history",  title = "Historia" },
   { key = "import",   title = "Tuonti" },
   { key = "settings", title = "Asetukset" },
 }
+
+--- A tab's title by its key, so the name is written out in one place.
+---
+--- The Trade button rewrites its own text to carry the queue count, and
+--- used to spell the name out a second time to do it. The two then had to
+--- be renamed together, and renaming only the table would have left the
+--- first queue refresh putting the old name back.
+local NAV_TITLE = {}
+for _, entry in ipairs(NAV) do NAV_TITLE[entry.key] = entry.title end
 
 local function showView(key)
   currentView = key
@@ -272,8 +285,9 @@ local function refreshStatus()
   -- list, and a forgotten handover must not hide behind a tab.
   if navButtons.trade then
     local pending = NS.PendingTrades and #NS.PendingTrades() or 0
+    local title = NAV_TITLE.trade
     navButtons.trade:SetText(
-      pending > 0 and ("Kauppa (" .. pending .. ")") or "Kauppa")
+      pending > 0 and (title .. " (" .. pending .. ")") or title)
   end
 end
 
@@ -785,7 +799,7 @@ local function drawTrade()
 
   local queue = NS.PendingTrades()
 
-  frame.info:SetText(("Luovuttamatta: %s%d|r\nAvaa kauppa pelaajan kanssa — "
+  frame.info:SetText(("Luovuttamatta: %s%d|r\nAvaa trade pelaajan kanssa — "
     .. "itemit asettuvat paikoilleen itsestään."):format(GOLD, #queue))
 
   local content = frame.scroll.content
@@ -1211,7 +1225,7 @@ local function drawSettings()
       "UICheckButtonTemplate")
     trade:SetPoint("TOPLEFT", 2, -98)
     trade:SetSize(24, 24)
-    _G[trade:GetName() .. "Text"]:SetText("Täytä kauppaikkuna itsestään")
+    _G[trade:GetName() .. "Text"]:SetText("Täytä trade-ikkuna itsestään")
     trade:SetScript("OnClick", function(self)
       NS.db.autoFillTrade = self:GetChecked() and true or false
     end)

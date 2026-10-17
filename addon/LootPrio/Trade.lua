@@ -216,7 +216,7 @@ local function fillTradeWindow()
   end
 
   if placed > 0 then
-    NS.Print(("%d itemiä kauppaan: %s"):format(placed, partner))
+    NS.Print(("%d itemiä tradeen: %s"):format(placed, partner))
   end
 
   if missing > 0 then
