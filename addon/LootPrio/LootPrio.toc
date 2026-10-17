@@ -2,7 +2,7 @@
 ## Title: LootPrio
 ## Notes: Raidin loottiprioriteetit killan sivustolta.
 ## Author: Kilta
-## Version: 0.14
+## Version: 0.15
 ## SavedVariables: LootPrioDB
 
 # Load order matters: Core defines the namespace and the settings that

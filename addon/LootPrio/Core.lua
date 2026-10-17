@@ -468,6 +468,13 @@ SlashCmdList.LOOTPRIO = function(input)
   elseif command == "api" then
     NS.ReportApi()
   else
-    NS.Print("käytä: /lp  (avaa ikkunan)  tai  /lp api  (clientin API-tuki)")
+    -- The running version goes in the answer to an unknown command.
+    --
+    -- An unknown command usually means the game is running an older copy
+    -- than the one on disk, because the command it does not know is one
+    -- that was only just added. Saying which version is talking turns
+    -- that from a guess into a reading.
+    NS.Print(("v%s — käytä: /lp  (avaa ikkunan)  tai  /lp api  "
+      .. "(clientin API-tuki)"):format(NS.VERSION))
   end
 end
